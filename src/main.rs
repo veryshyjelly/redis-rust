@@ -1,17 +1,18 @@
-#![allow(unused_imports)]
-use std::net::TcpListener;
+mod redis;
 
-fn main() {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
+use std::net::TcpListener;
+use redis::Redis;
+
+fn main() -> std::io::Result<()> {
     println!("Logs from your program will appear here!");
 
-    // Uncomment the code below to pass the first stage
-    //
-    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
-    //
+    let listener = TcpListener::bind("127.0.0.1:6379")?;
+    
     for stream in listener.incoming() {
         match stream {
-            Ok(_stream) => {
+            Ok(stream) => {
+                let mut redis = Redis::new(Box::new(stream));
+                redis.handle()?;
                 println!("accepted new connection");
             }
             Err(e) => {
@@ -19,4 +20,6 @@ fn main() {
             }
         }
     }
+    
+    Ok(())
 }
