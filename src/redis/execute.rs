@@ -14,6 +14,7 @@ impl Redis {
             "set" => self.set(cmd),
             "get" => self.get(cmd),
             "rpush" => self.rpush(cmd),
+            "lpush" => self.lpush(cmd),
             "lrange" => self.lrange(cmd),
             _ => self.invalid(cmd),
         }

@@ -1,5 +1,5 @@
 use crate::resp::{Hashable, RESP};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
@@ -11,7 +11,7 @@ impl ReadWrite for TcpStream {}
 pub struct RedisStore {
     pub kv: HashMap<Hashable, RESP>,
     pub expiry: BTreeMap<std::time::Instant, Hashable>,
-    pub list: HashMap<Hashable, Vec<RESP>>,
+    pub list: HashMap<Hashable, VecDeque<RESP>>,
 }
 
 pub struct Redis {
