@@ -58,4 +58,12 @@ impl Redis {
 
         write!(self.io, "{resp}")
     }
+    
+    pub fn llen(&mut self, mut args: Vec<RESP>) -> std::io::Result<()> {
+        let mut store = self.store.lock().unwrap();
+        let key = args.remove(0).hashable();
+        let list = store.list.entry(key).or_insert(VecDeque::new());
+        let n: RESP = list.len().into();
+        write!(self.io, "{n}") 
+    }
 }
