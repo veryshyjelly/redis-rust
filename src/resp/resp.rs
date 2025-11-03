@@ -139,7 +139,7 @@ impl Into<RESP> for Hashable {
             Hashable::Integer(i) => RESP::Integer(i),
             Hashable::Array(a) => RESP::Array(a.into_iter().map(|v| v.into()).collect()),
             Hashable::Boolean(b) => RESP::Boolean(b),
-            Hashable::None => RESP::None
+            Hashable::None => RESP::None,
         }
     }
 }

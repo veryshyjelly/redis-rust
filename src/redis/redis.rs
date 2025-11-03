@@ -1,3 +1,4 @@
+use super::value::Value;
 use crate::resp::{Hashable, RESP};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{Read, Write};
@@ -9,9 +10,8 @@ pub trait ReadWrite: Read + Write {}
 impl ReadWrite for TcpStream {}
 
 pub struct RedisStore {
-    pub kv: HashMap<Hashable, RESP>,
+    pub kv: HashMap<Hashable, Value>,
     pub expiry: BTreeMap<std::time::Instant, Hashable>,
-    pub list: HashMap<Hashable, VecDeque<RESP>>,
 }
 
 pub struct Redis {

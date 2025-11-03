@@ -13,7 +13,6 @@ fn main() -> std::io::Result<()> {
     let redis_store = Arc::new(Mutex::new(RedisStore {
         kv: Default::default(),
         expiry: Default::default(),
-        list: Default::default(),
     }));
 
     for stream in listener.incoming() {

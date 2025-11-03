@@ -19,8 +19,17 @@ impl Redis {
             "llen" => self.llen(cmd),
             "lpop" => self.lpop(cmd),
             "blpop" => self.blpop(cmd),
+            "type" => self.redis_type(cmd),
+            "xadd" => self.xadd(cmd),
             _ => self.invalid(cmd),
         }
+    }
+    
+    fn redis_type(&mut self, mut args: Vec<RESP>) -> std::io::Result<()> {
+        let key = args.remove(0).hashable();
+        let store = self.store.lock().unwrap();
+        let resp: RESP = store.kv.get(&key).map(|v| v.redis_type()).unwrap_or("none".into()).into();
+        write!(self.io, "{resp}")
     }
 
     fn echo(&mut self, args: Vec<RESP>) -> std::io::Result<()> {

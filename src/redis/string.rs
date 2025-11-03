@@ -9,7 +9,7 @@ impl Redis {
         let mut store = self.store.lock().unwrap();
         let key = args.remove(0).hashable();
         let value = args.remove(0);
-        store.kv.insert(key.clone(), value);
+        store.kv.insert(key.clone(), value.into());
 
         if args.len() > 0 {
             let unit = args
@@ -38,7 +38,7 @@ impl Redis {
         let store = self.store.lock().unwrap();
 
         let key = args.remove(0).hashable();
-        if let Some(v) = store.kv.get(&key) {
+        if let Some(v) = store.kv.get(&key).and_then(|v| v.string()) {
             write!(self.io, "{v}")
         } else {
             write!(self.io, "{}", RESP::null_bulk_string())
