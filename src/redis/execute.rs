@@ -17,6 +17,8 @@ impl Redis {
             "lpush" => self.lpush(cmd),
             "lrange" => self.lrange(cmd),
             "llen" => self.llen(cmd),
+            "lpop" => self.lpop(cmd),
+            "blpop" => self.blpop(cmd),
             _ => self.invalid(cmd),
         }
     }
