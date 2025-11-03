@@ -24,7 +24,7 @@ impl Default for RESP {
     }
 }
 
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Clone, Hash, Eq, PartialEq)]
 pub enum Hashable {
     String(String),
     Integer(isize),

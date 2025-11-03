@@ -20,7 +20,7 @@ impl Display for RESP {
             RESP::Attributes(a) => RESP::fmt_attributes(a, f),
             RESP::Set(s) => RESP::fmt_set(s, f),
             RESP::Push(p) => RESP::fmt_push(p, f),
-            RESP::None => RESP::fmt_none(f)
+            RESP::None => RESP::fmt_none(f),
         }
     }
 }
@@ -36,9 +36,9 @@ impl Display for Hashable {
                     write!(f, "{a}")?;
                 }
                 Ok(())
-            },
+            }
             Hashable::Boolean(b) => RESP::fmt_boolean(b, f),
-            Hashable::None => RESP::fmt_none(f)
+            Hashable::None => RESP::fmt_none(f),
         }
     }
 }
@@ -122,7 +122,7 @@ impl RESP {
         write!(f, "_\r\n")
     }
     pub fn null_bulk_string() -> String {
-        "$-1\r\n".into()     
+        "$-1\r\n".into()
     }
     pub fn null_array() -> String {
         "*-1\r\n".into()

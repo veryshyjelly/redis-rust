@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::resp::{Hashable, RESP};
+use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
@@ -9,12 +9,17 @@ impl ReadWrite for TcpStream {}
 
 pub struct Redis {
     pub io: Box<dyn ReadWrite>,
-    pub store: HashMap<Hashable, RESP>
+    pub store: HashMap<Hashable, RESP>,
+    pub expiry: BTreeMap<std::time::Instant, Hashable>,
 }
 
 impl Redis {
     pub fn new(io: Box<dyn ReadWrite>) -> Self {
-        Redis { io, store: HashMap::new() }
+        Redis {
+            io,
+            store: HashMap::new(),
+            expiry: BTreeMap::new(),
+        }
     }
 
     pub fn handle(&mut self) -> std::io::Result<()> {
@@ -34,9 +39,9 @@ impl Redis {
             if n == 0 {
                 return Ok(());
             }
-            
+
             read_bytes += n;
-            
+
             // println!("read {n} bytes");
 
             loop {
@@ -44,7 +49,7 @@ impl Redis {
                     Ok(v) => v,
                     Err(_) => break,
                 };
-                
+
                 // println!("parsed {parsed} bytes");
 
                 read_bytes -= parsed;
@@ -61,13 +66,19 @@ impl Redis {
         if let Some((parsed, cmd)) = RESP::parse(data) {
             if let Some(cmd) = cmd.array() {
                 println!("{cmd:?}");
-                self.execute(cmd).unwrap();
+                if let Some(err) = self.execute(cmd).err() {
+                    let e = RESP::SimpleError(format!("{err}"));
+                    write!(self.io, "{e}")?;
+                }
             } else {
                 // self.io.write("+PONG\r\n".as_bytes())?;
             }
             Ok(parsed)
         } else {
-            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "cannot parse data"))
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "cannot parse data",
+            ))
         }
     }
 }
