@@ -11,7 +11,26 @@ impl Redis {
         match name.to_lowercase().as_str() {
             "ping" => self.ping(cmd),
             "echo" => self.echo(cmd),
+            "set" => self.set(cmd),
+            "get" => self.get(cmd),
             _ => self.invalid(cmd),
+        }
+    }
+    
+    fn set(&mut self, mut args: Vec<RESP>) -> std::io::Result<()> {
+        let key = args.remove(0).hashable();
+        let value = args.remove(0);
+        self.store.insert(key, value);
+        let resp: RESP = "OK".into();
+        write!(self.io, "{resp}")
+    }
+    
+    fn get(&mut self, mut args: Vec<RESP>) -> std::io::Result<()> {
+        let key = args.remove(0).hashable();
+        if let Some(v) = self.store.get(&key) {
+            write!(self.io, "{v}") 
+        } else {
+            write!(self.io, "{}", RESP::null_bulk_string()) 
         }
     }
     

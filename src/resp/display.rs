@@ -96,7 +96,6 @@ impl RESP {
         }
         Ok(())
     }
-
     pub fn fmt_attributes(m: &HashMap<Hashable, RESP>, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "|{}\r\n", m.len())?;
         for (k, v) in m {
@@ -105,7 +104,6 @@ impl RESP {
         }
         Ok(())
     }
-
     pub fn fmt_set(s: &HashSet<Hashable>, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "~{}\r\n", s.len())?;
         for v in s {
@@ -113,7 +111,6 @@ impl RESP {
         }
         Ok(())
     }
-
     pub fn fmt_push(p: &Vec<RESP>, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, ">{}\r\n", p.len())?;
         for a in p {
@@ -121,8 +118,13 @@ impl RESP {
         }
         Ok(())
     }
-    
     pub fn fmt_none(f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "_\r\n")
+    }
+    pub fn null_bulk_string() -> String {
+        "$-1\r\n".into()     
+    }
+    pub fn null_array() -> String {
+        "*-1\r\n".into()
     }
 }

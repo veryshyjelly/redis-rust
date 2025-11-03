@@ -18,6 +18,12 @@ pub enum RESP {
     None,                                // _
 }
 
+impl Default for RESP {
+    fn default() -> Self {
+        RESP::None
+    }
+}
+
 #[derive(Hash, Eq, PartialEq)]
 pub enum Hashable {
     String(String),

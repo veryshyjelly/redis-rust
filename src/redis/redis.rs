@@ -1,4 +1,5 @@
-use crate::resp::RESP;
+use std::collections::HashMap;
+use crate::resp::{Hashable, RESP};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
@@ -8,11 +9,12 @@ impl ReadWrite for TcpStream {}
 
 pub struct Redis {
     pub io: Box<dyn ReadWrite>,
+    pub store: HashMap<Hashable, RESP>
 }
 
 impl Redis {
     pub fn new(io: Box<dyn ReadWrite>) -> Self {
-        Redis { io }
+        Redis { io, store: HashMap::new() }
     }
 
     pub fn handle(&mut self) -> std::io::Result<()> {
