@@ -21,7 +21,7 @@ impl Redis {
             StreamEntryID::new()
         } else if id.contains("*") {
             let time: usize = id.split("-").nth(0).unwrap().parse().unwrap();
-            let mut sqn = 0;
+            let mut sqn = if time == 0 {1} else {0};
             if let Some(x) = stream.last() {
                 if x.id.time == time {
                     sqn = x.id.sqn + 1;
