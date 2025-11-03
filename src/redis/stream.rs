@@ -33,7 +33,10 @@ impl Redis {
         };
         
         let entry = StreamEntry {id, data};
-        if stream.is_empty() || &entry > stream.last().unwrap() {
+        if id == (StreamEntryID {time: 0, sqn: 0}) {
+            let resp = RESP::SimpleError("ERR The ID specified in XADD must be greater than 0-0".into());
+            write!(self.io, "{resp}")
+        } else if stream.is_empty() || &entry > stream.last().unwrap() {
             stream.push(entry);
             let resp: RESP = id.to_string().into();
             write!(self.io, "{resp}")
