@@ -6,9 +6,8 @@ impl Redis {
     pub fn rpush(&mut self, mut args: Vec<RESP>) -> std::io::Result<()> {
         let mut store = self.store.lock().unwrap();
         let key = args.remove(0).hashable();
-        let value = args.remove(0);
         let e = store.list.entry(key).or_insert(vec![]);
-        e.push(value);
+        e.append(&mut args);
         let resp: RESP = e.len().into();
         write!(self.io, "{resp}")
     }
