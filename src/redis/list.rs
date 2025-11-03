@@ -29,13 +29,27 @@ impl Redis {
 
     pub fn lpop(&mut self, mut args: Vec<RESP>) -> std::io::Result<()> {
         let key = args.remove(0).hashable();
+        let count: usize = args
+            .get(0)
+            .unwrap_or(&"1".into())
+            .clone()
+            .string()
+            .unwrap()
+            .parse()
+            .unwrap();
 
         let mut store = self.store.lock().unwrap();
         let list = store.list.entry(key).or_insert(VecDeque::new());
-        if let Some(v) = list.pop_front() {
-            write!(self.io, "{v}")
-        } else {
+        let count = count.min(list.len());
+
+        if count == 0 {
             let resp = RESP::null_bulk_string();
+            write!(self.io, "{resp}")
+        } else if count == 1 {
+            write!(self.io, "{}", list.pop_front().unwrap())
+        } else {
+            let res: Vec<_> = (0..count).map(|_| list.pop_front().unwrap()).collect();
+            let resp: RESP = res.into();
             write!(self.io, "{resp}")
         }
     }
@@ -43,14 +57,18 @@ impl Redis {
     pub fn blpop(&mut self, mut args: Vec<RESP>) -> std::io::Result<()> {
         let key = args.remove(0).hashable();
         let now = std::time::Instant::now();
-        let time_out: f64 = args
+        let mut time_out: f64 = args
             .get(0)
-            .unwrap_or(&"inf".into())
+            .unwrap_or(&"0.0".into())
             .clone()
             .string()
             .unwrap()
             .parse()
             .unwrap();
+        
+        if time_out == 0.0 {
+            time_out = f64::INFINITY;
+        }
 
         while now.elapsed().as_secs_f64() < time_out {
             let mut store = self.store.lock().unwrap();
