@@ -1,6 +1,6 @@
 use super::value::Value;
 use crate::resp::{Hashable, RESP};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
@@ -11,7 +11,8 @@ impl ReadWrite for TcpStream {}
 
 pub struct RedisStore {
     pub kv: HashMap<Hashable, Value>,
-    pub expiry: BTreeMap<std::time::Instant, Hashable>,
+    pub expiry_queue: BTreeMap<std::time::Instant, Hashable>,
+    pub expiry_time: HashMap<Hashable, std::time::Instant>,
 }
 
 pub struct Redis {
@@ -69,6 +70,8 @@ impl Redis {
             if let Some(cmd) = cmd.array() {
                 #[cfg(debug_assertions)]
                 println!("{cmd:?}");
+
+                let cmd = cmd.into_iter().collect();
 
                 if let Some(err) = self.execute(cmd).err() {
                     let e = RESP::SimpleError(format!("{err}"));

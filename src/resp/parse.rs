@@ -127,7 +127,7 @@ impl RESP {
             parsed += p;
             let (p, value) = Self::parse(&data[parsed..])?;
             parsed += p;
-            res.insert(key.hashable(), value);
+            res.insert(key.hashable().ok()?, value);
         }
 
         Some((parsed, RESP::Map(res)))
@@ -146,7 +146,7 @@ impl RESP {
         for _ in 1..count {
             let (p, value) = Self::parse(&data[parsed..])?;
             parsed += p;
-            res.insert(value.hashable());
+            res.insert(value.hashable().ok()?);
         }
 
         Some((parsed, RESP::Set(res)))

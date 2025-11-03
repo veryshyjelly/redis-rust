@@ -36,100 +36,70 @@ pub enum Hashable {
 
 pub type Result = Option<(usize, RESP)>;
 
+macro_rules! impl_getter {
+    // single variant
+    ($name:ident, $variant:ident, $ty:ty) => {
+        pub fn $name(self) -> Option<$ty> {
+            if let Self::$variant(v) = self {
+                Some(v)
+            } else {
+                None
+            }
+        }
+    };
+    // multiple variants
+    ($name:ident, [$($variant:ident),+], $ty:ty) => {
+        pub fn $name(self) -> Option<$ty> {
+            match self {
+                $(Self::$variant(v))|+ => Some(v),
+                _ => None,
+            }
+        }
+    };
+}
+
 impl RESP {
-    pub fn int(self) -> Option<isize> {
-        match self {
-            RESP::Integer(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn string(self) -> Option<String> {
-        match self {
-            RESP::SimpleString(s) => Some(s),
-            RESP::BulkString(s) => Some(s),
-            _ => None,
-        }
-    }
-
-    pub fn error(self) -> Option<String> {
-        match self {
-            RESP::SimpleError(e) => Some(e),
-            RESP::BulkError(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    pub fn double(self) -> Option<f64> {
-        match self {
-            RESP::Double(f) => Some(f),
-            _ => None,
-        }
-    }
-
-    pub fn array(self) -> Option<Vec<RESP>> {
-        match self {
-            RESP::Array(v) => Some(v),
-            RESP::Push(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn map(self) -> Option<HashMap<Hashable, RESP>> {
-        match self {
-            RESP::Map(v) => Some(v),
-            RESP::Attributes(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn hashable(self) -> Hashable {
+    pub fn hashable(self) -> std::io::Result<Hashable> {
         use Hashable::*;
 
-        match self {
+        let r = match self {
             RESP::SimpleString(s) => String(s),
             RESP::BulkString(s) => String(s),
             RESP::SimpleError(e) => String(e),
             RESP::BulkError(e) => String(e),
             RESP::Integer(i) => Integer(i),
-            RESP::Array(a) => Array(a.into_iter().map(|x| x.hashable()).collect()),
+            RESP::Array(a) => {
+                let mut v = vec![];
+                for ai in a {
+                    v.push(ai.hashable()?);
+                } 
+                Array(v)
+            },
             RESP::Boolean(b) => Boolean(b),
             RESP::BigNumber(s) => String(s),
             RESP::VerbatimString((_, v)) => String(v),
             RESP::None => None,
-            _ => panic!("unhashable type given to hash"),
-        }
+            _ => return Err(std::io::ErrorKind::InvalidData)?,
+        };
+        
+        Ok(r)
     }
+
+    impl_getter!(int, Integer, isize);
+    impl_getter!(double, Double, f64);
+    impl_getter!(boolean, Boolean, bool);
+    impl_getter!(string, [SimpleString, BulkString], String);
+    impl_getter!(error, [SimpleError, BulkError], String);
+    impl_getter!(array, [Array, Push], Vec<RESP>);
+    impl_getter!(map, [Map, Attributes], HashMap<Hashable, RESP>);
+    impl_getter!(set, Set, HashSet<Hashable>);
 }
 
-impl Into<RESP> for String {
-    fn into(self) -> RESP {
-        RESP::BulkString(self)
-    }
-}
-
-impl Into<RESP> for &str {
-    fn into(self) -> RESP {
-        RESP::SimpleString(self.to_string())
-    }
-}
-
-impl Into<RESP> for usize {
-    fn into(self) -> RESP {
-        RESP::Integer(self as isize)
-    }
-}
-
-impl Into<RESP> for isize {
-    fn into(self) -> RESP {
-        RESP::Integer(self)
-    }
-}
-
-impl Into<RESP> for Vec<RESP> {
-    fn into(self) -> RESP {
-        RESP::Array(self)
-    }
+impl Hashable {
+    impl_getter!(string, String, String);
+    impl_getter!(int, Integer, isize);
+    impl_getter!(array, Array, Vec<Hashable>);
+    impl_getter!(boolean, Boolean, bool);
 }
 
 impl Into<RESP> for Hashable {
@@ -143,3 +113,32 @@ impl Into<RESP> for Hashable {
         }
     }
 }
+
+macro_rules! impl_into_resp {
+    // single type to variant
+    ($ty:ty => $variant:ident) => {
+        impl Into<RESP> for $ty {
+            fn into(self) -> RESP {
+                RESP::$variant(self)
+            }
+        }
+    };
+    // type + custom conversion (like &str -> String)
+    ($ty:ty => $variant:ident, $conv:expr) => {
+        impl Into<RESP> for $ty {
+            fn into(self) -> RESP {
+                RESP::$variant($conv(self))
+            }
+        }
+    };
+}
+
+impl_into_resp!(usize => Integer, |v: usize| v as isize);
+impl_into_resp!(isize => Integer);
+impl_into_resp!(f64 => Double);
+impl_into_resp!(bool => Boolean);
+impl_into_resp!(&str => SimpleString, |s: &str| s.to_string());
+impl_into_resp!(String => BulkString);
+impl_into_resp!(Vec<RESP> => Array);
+impl_into_resp!(HashSet<Hashable> => Set);
+impl_into_resp!(HashMap<Hashable, RESP> => Map);
