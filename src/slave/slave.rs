@@ -26,6 +26,7 @@ impl Slave {
     pub fn handshake(&mut self) -> std::io::Result<()> {
         self.ping()?;
         self.replconf()?;
+        self.psync()?;
         Ok(())
     }
 
