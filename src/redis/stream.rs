@@ -1,11 +1,27 @@
 use super::{Redis, Command};
 use super::errors::{syntax_error, wrong_num_arguments, wrong_type};
+use std::cmp::Ordering;
+use std::fmt::{Display, Formatter};
+use std::time::{SystemTime, UNIX_EPOCH};
 use super::utils::make_io_error;
-use super::value::{StreamEntry, StreamEntryID, Value};
+use super::value::{Value};
 use crate::resp::{TypedNone, RESP};
 use std::collections::{HashMap};
 use std::thread::sleep;
 use std::time::Duration;
+
+#[derive(Clone)]
+pub struct StreamEntry {
+    pub id: StreamEntryID,
+    pub data: HashMap<String, String>,
+}
+
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+pub struct StreamEntryID {
+    pub time: usize,
+    pub sqn: usize,
+}
+
 
 impl Redis {
     /// Appends the specified stream entry to the stream at the specified key.
@@ -241,5 +257,86 @@ impl Redis {
         .into();
 
         Ok(n)
+    }
+}
+
+impl StreamEntryID {
+    /// Create a new StreamEntryID for current time
+    pub fn new() -> Self {
+        StreamEntryID {
+            time: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as usize,
+            sqn: 0,
+        }
+    }
+
+    /// Converts string from either specified only time
+    /// or both time and sqn to `StreamEntryID`
+    pub fn implicit(s: String) -> Self {
+        if s.contains("-") {
+            StreamEntryID::explicit(s)
+        } else {
+            let time = s.parse().unwrap();
+            StreamEntryID::with_time(time)
+        }
+    }
+
+    /// Creates a `StreamEntryID` with the given time
+    /// if time is zero then sequence starts from 1
+    pub fn with_time(time: usize) -> Self {
+        let sqn = if time == 0 { 1 } else { 0 };
+        StreamEntryID { time, sqn }
+    }
+
+    /// Create `StreamEntryID` from explicit string
+    /// of the form <time_in_milliseconds>-<sequence_number>
+    pub fn explicit(s: String) -> Self {
+        let tqn: Vec<usize> = s.split("-").map(|v| v.parse().unwrap()).collect();
+        StreamEntryID {
+            time: tqn[0],
+            sqn: tqn[1],
+        }
+    }
+}
+
+impl Display for StreamEntryID {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{}", self.time, self.sqn)
+    }
+}
+
+impl Ord for StreamEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.id.cmp(&other.id)
+    }
+}
+
+impl Eq for StreamEntry {}
+
+impl PartialOrd for StreamEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.id.partial_cmp(&other.id)
+    }
+}
+
+impl PartialEq for StreamEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.id.eq(&other.id)
+    }
+}
+
+impl Into<RESP> for StreamEntry {
+    fn into(self) -> RESP {
+        let mut res: Vec<RESP> = vec![];
+        res.push(self.id.to_string().into());
+        let mut kvs: Vec<RESP> = vec![];
+        for (k, v) in &self.data {
+            kvs.push(k.to_owned().into());
+            kvs.push(v.to_owned().into());
+        }
+        res.push(kvs.into());
+        res.into()
     }
 }

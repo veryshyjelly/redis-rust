@@ -7,6 +7,7 @@ mod string;
 mod utils;
 mod value;
 mod transaction;
+mod info;
 
 pub use redis::Redis;
 pub use redis::RedisStore;

@@ -15,6 +15,7 @@ impl Redis {
             .ok_or(make_io_error("ERR expected command got nothing"))?;
 
         match name.to_lowercase().as_str() {
+            "info" => self.info(cmd),
             "ping" => self.ping(cmd),
             "echo" => self.echo(cmd),
             "set" => self.set(cmd),

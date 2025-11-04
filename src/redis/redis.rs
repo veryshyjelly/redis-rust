@@ -3,14 +3,17 @@ use crate::resp::{RESP};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::ops::{Add, AddAssign, SubAssign};
 use std::sync::{Arc, Mutex};
-use crate::redis::errors::syntax_error;
+use super::errors::syntax_error;
+use super::info::Info;
 
 pub trait ReadWrite: Read + Write {}
 
 impl ReadWrite for TcpStream {}
 
 pub struct RedisStore {
+    pub info: Info,
     pub kv: HashMap<String, Value>,
     pub expiry_queue: BTreeMap<std::time::Instant, String>,
     pub expiry_time: HashMap<String, std::time::Instant>,
@@ -30,7 +33,9 @@ impl Redis {
         Redis { io, store, is_transaction: false, transaction: vec![] }
     }
 
-    pub fn handle(&mut self) -> std::io::Result<()> {
+    pub fn handle(&mut self) {
+        self.store.lock().unwrap().info.connected_client.add_assign(1);
+        
         let mut buf = vec![0; 1024];
         let mut read_bytes = 0;
         #[allow(unused)]
@@ -38,14 +43,15 @@ impl Redis {
 
         loop {
             if read_bytes == buf.len() {
-                let mut buuf = vec![0; buf.len() * 2];
-                buuf[0..buf.len()].copy_from_slice(&buf);
-                buf = buuf;
+                let mut buf2 = vec![0; buf.len() * 2];
+                buf2[0..buf.len()].copy_from_slice(&buf);
+                buf = buf2;
             }
 
-            let n = self.io.read(&mut buf[read_bytes..])?;
+            let n = self.io.read(&mut buf[read_bytes..]).unwrap_or(0);
             if n == 0 {
-                return Ok(());
+                self.store.lock().unwrap().info.connected_client.sub_assign(1);
+                return;
             }
 
             read_bytes += n;
