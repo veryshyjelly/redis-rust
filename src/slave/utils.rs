@@ -1,5 +1,5 @@
-use std::io::{Read, Write};
 use crate::resp::ReadWrite;
+use std::io::{Read, Write};
 
 pub struct DevNull;
 

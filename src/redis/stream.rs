@@ -2,7 +2,7 @@ use super::errors::{syntax_error, wrong_num_arguments, wrong_type};
 use super::utils::make_io_error;
 use super::value::Value;
 use super::{Command, Redis};
-use crate::resp::{TypedNone, RESP};
+use crate::resp::{RESP, TypedNone};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};

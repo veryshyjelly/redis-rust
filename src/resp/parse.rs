@@ -1,5 +1,5 @@
 use super::resp::Result;
-use super::resp::{TypedNone, RESP};
+use super::resp::{RESP, TypedNone};
 use std::collections::{HashMap, HashSet};
 
 impl RESP {
@@ -151,7 +151,7 @@ impl RESP {
 
         Some((parsed, RESP::Set(res)))
     }
-    
+
     pub fn parse_rdb(data: &[u8]) -> Result {
         let (mut parsed, length) = Self::parse_integer(data)?;
         let length = length.int()? as usize;
@@ -159,7 +159,7 @@ impl RESP {
             return None;
         }
         parsed += length;
-        Some((parsed, RESP::RDB(data[parsed - length .. parsed].to_vec())))
+        Some((parsed, RESP::RDB(data[parsed - length..parsed].to_vec())))
     }
 
     fn parse_push(data: &[u8]) -> Result {

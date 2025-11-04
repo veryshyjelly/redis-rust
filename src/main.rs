@@ -2,11 +2,11 @@ mod redis;
 mod resp;
 mod slave;
 
-use std::collections::HashMap;
 use crate::redis::{Info, RedisStore, Role};
 use crate::slave::Slave;
-use rand::{distr::Alphanumeric, Rng};
+use rand::{Rng, distr::Alphanumeric};
 use redis::Redis;
+use std::collections::HashMap;
 use std::net::{Ipv4Addr, TcpListener};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};

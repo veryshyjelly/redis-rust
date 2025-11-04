@@ -1,14 +1,14 @@
 use super::errors::syntax_error;
 use super::info::Info;
 use super::value::Value;
+use crate::redis::Role;
 use crate::resp::ReadWrite;
-use crate::resp::{RESPHandler, RESP};
+use crate::resp::{RESP, RESPHandler};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{PipeWriter, Write};
 use std::net::TcpStream;
 use std::ops::{AddAssign, SubAssign};
 use std::sync::{Arc, Mutex};
-use crate::redis::Role;
 
 impl ReadWrite for TcpStream {}
 
@@ -53,7 +53,7 @@ impl Redis {
             .info
             .connected_client
             .add_assign(1);
-        
+
         let role = self.store.lock().unwrap().info.role;
 
         loop {
@@ -61,11 +61,10 @@ impl Redis {
                 Some(v) => v,
                 None => break,
             };
-            
+
             if let Some(cmd) = comd.clone().array() {
                 #[cfg(debug_assertions)]
                 println!("{cmd:?}");
-
 
                 let mut args = VecDeque::new();
                 for c in cmd {
@@ -91,8 +90,8 @@ impl Redis {
                     for c in closed {
                         self.store.lock().unwrap().slaves.remove(&c);
                     }
-                }                 
-                
+                }
+
                 match self.execute(args) {
                     Ok(res) => self.resp.send(res),
                     Err(err) => {
@@ -117,6 +116,6 @@ impl Redis {
 fn is_write_command(cmd: &str) -> bool {
     match cmd.to_lowercase().as_str() {
         "set" | "del" => true,
-        _ => false
+        _ => false,
     }
 }

@@ -7,4 +7,4 @@ mod parse;
 mod resp;
 
 pub use handler::{RESPHandler, ReadWrite};
-pub use resp::{TypedNone, RESP};
+pub use resp::{RESP, TypedNone};

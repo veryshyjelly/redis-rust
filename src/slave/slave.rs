@@ -1,10 +1,10 @@
+use super::utils::DevNull;
+use crate::redis::{Redis, RedisStore, syntax_error};
+use crate::resp::{RESP, RESPHandler};
 use std::collections::VecDeque;
-use std::io::{pipe};
-use crate::redis::{syntax_error, Redis, RedisStore};
-use crate::resp::{RESPHandler, RESP};
+use std::io::pipe;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::sync::{Arc, Mutex};
-use super::utils::DevNull;
 
 pub struct Slave {
     pub master: (Ipv4Addr, u16),
@@ -65,23 +65,23 @@ impl Slave {
 
         let message = RESP::from(vec!["PSYNC".into(), repl_id, offset.to_string()]);
         self.io.send(message)?;
-        
+
         let response = self.io.next().unwrap();
         #[cfg(debug_assertions)]
         print!("psync-response: {response}");
-        
+
         let rdb_file = self.io.next_rdb();
         #[cfg(debug_assertions)]
         println!("rdb_file: {rdb_file:?}");
-        
+
         let mut redis = Redis::new(Box::new(DevNull), self.store.clone());
-        
+
         self.io.parsed_bytes = 0;
-        
+
         loop {
             let cmd = match self.io.next() {
                 Some(v) => v,
-                None => break
+                None => break,
             };
 
             if let Some(cmd) = cmd.array() {
@@ -106,14 +106,14 @@ impl Slave {
                             self.io.send(v.into())?;
                         }
                         // redis.resp.send(res)
-                    },
+                    }
                     Err(err) => {
                         // let e = RESP::SimpleError(format!("{err}"));
                         // redis.resp.send(e)
                     }
                 };
             }
-            
+
             self.store.lock().unwrap().info.offset = self.io.parsed_bytes as isize;
         }
         // assert_eq!(response.to_lowercase(), "ok");
