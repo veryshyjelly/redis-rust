@@ -1,20 +1,18 @@
 use super::Redis;
 use super::Command;
-use super::errors::{syntax_error, wrong_num_arguments};
+use super::errors::{wrong_num_arguments};
 use super::utils::make_io_error;
-use crate::resp::RESP;
+use crate::resp::{TypedNone, RESP};
 
 impl Redis {
-    pub fn execute(&mut self, mut cmd: Command) -> std::io::Result<()> {
+    pub fn execute(&mut self, mut cmd: Command) -> std::io::Result<RESP> {
         if self.is_transaction {
             return self.transaction(cmd);
         }
         
         let name = cmd
             .pop_front()
-            .ok_or(make_io_error("ERR expected command got nothing"))?
-            .string()
-            .ok_or(syntax_error())?;
+            .ok_or(make_io_error("ERR expected command got nothing"))?;
 
         match name.to_lowercase().as_str() {
             "ping" => self.ping(cmd),
@@ -44,40 +42,37 @@ impl Redis {
     /// ```
     /// TYPE key
     /// ```
-    fn redis_type(&mut self, mut args: Command) -> std::io::Result<()> {
+    fn redis_type(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let key = args
             .pop_front()
-            .ok_or(wrong_num_arguments("type"))?
-            .hashable()?;
+            .ok_or(wrong_num_arguments("type"))?;
         let store = self.store.lock().unwrap();
-        let resp: RESP = store
+        let resp  = store
             .kv
             .get(&key)
             .map(|v| v.redis_type())
             .unwrap_or("none".into())
             .into();
-        write!(self.io, "{resp}")
+        Ok(resp)
     }
 
     /// Returns message.
     /// ```
     /// ECHO message
     /// ```
-    fn echo(&mut self, args: Command) -> std::io::Result<()> {
-        write!(self.io, "{}", args[0])
+    fn echo(&mut self, mut args: Command) -> std::io::Result<RESP> {
+        Ok(args.pop_front().ok_or(wrong_num_arguments("echo"))?.into())
     }
 
     /// Returns PONG if no argument is provided, otherwise return a copy of the argument as a bulk.
     /// ```
     /// PING [message]
     /// ```
-    fn ping(&mut self, _: Command) -> std::io::Result<()> {
-        let resp: RESP = "PONG".into();
-        write!(self.io, "{resp}")
+    fn ping(&mut self, _: Command) -> std::io::Result<RESP> {
+        Ok("PONG".into())
     }
 
-    fn invalid(&mut self, _: Command) -> std::io::Result<()> {
-        let resp = RESP::None;
-        write!(self.io, "{resp}")
+    fn invalid(&mut self, _: Command) -> std::io::Result<RESP> {
+        Ok(RESP::None(TypedNone::Nil))
     }
 }

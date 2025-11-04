@@ -2,7 +2,7 @@ use super::Redis;
 use super::Command;
 use super::errors::{syntax_error, wrong_num_arguments, wrong_type};
 use super::value::Value;
-use crate::resp::RESP;
+use crate::resp::{TypedNone, RESP};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -20,21 +20,20 @@ impl Redis {
     /// ```
     /// RPUSH key element [element ...]
     /// ```
-    pub fn rpush(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn rpush(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let mut store = self.store.lock().unwrap();
         let key = args
             .pop_front()
-            .ok_or(wrong_num_arguments("rpush"))?
-            .hashable()?;
+            .ok_or(wrong_num_arguments("rpush"))?;
         let e = store
             .kv
             .entry(key)
             .or_insert(Value::new_list())
             .list_mut()
             .ok_or(wrong_type())?;
-        e.append(&mut args);
-        let resp: RESP = e.len().into();
-        write!(self.io, "{resp}")
+        args.into_iter().for_each(|v| e.push_back(v.into()));
+        
+        Ok(e.len().into())
     }
 
     /// Insert all the specified values at the head of the list stored at key.
@@ -49,24 +48,20 @@ impl Redis {
     /// ```
     /// LPUSH key element [element ...]
     /// ```
-    pub fn lpush(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn lpush(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let mut store = self.store.lock().unwrap();
         let key = args
             .pop_front()
-            .ok_or(wrong_num_arguments("lpush"))?
-            .hashable()?;
+            .ok_or(wrong_num_arguments("lpush"))?;
         let e = store
             .kv
             .entry(key)
             .or_insert(Value::new_list())
             .list_mut()
             .ok_or(wrong_type())?;
-        for v in args {
-            e.push_front(v);
-        }
+        args.into_iter().for_each(|v| e.push_front(v.into()));
 
-        let resp: RESP = e.len().into();
-        write!(self.io, "{resp}")
+        Ok(e.len().into())
     }
 
     /// Removes and returns the first elements of the list stored at key.
@@ -77,36 +72,32 @@ impl Redis {
     /// ```
     /// LPOP key [count]
     /// ```
-    pub fn lpop(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn lpop(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let key = args
             .pop_front()
-            .ok_or(wrong_num_arguments("lpop"))?
-            .hashable()?;
+            .ok_or(wrong_num_arguments("lpop"))?;
         let count: usize = args
             .pop_front()
             .unwrap_or("1".into())
-            .string()
-            .ok_or(syntax_error())?
             .parse()
             .map_err(|_| syntax_error())?;
 
         let mut store = self.store.lock().unwrap();
-        if let Some(list) = store.kv.get_mut(&key).and_then(|v| v.list_mut()) {
+        let res = if let Some(list) = store.kv.get_mut(&key).and_then(|v| v.list_mut()) {
             let count = count.min(list.len());
             if count == 0 {
-                let resp = RESP::null_bulk_string();
-                write!(self.io, "{resp}")
+                RESP::None(TypedNone::String)
             } else if count == 1 {
-                write!(self.io, "{}", list.pop_front().unwrap())
+                list.pop_front().unwrap().into()
             } else {
                 let res: Vec<_> = list.drain(0..count).collect();
-                let resp: RESP = res.into();
-                write!(self.io, "{resp}")
+                res.into()
             }
         } else {
-            let resp = RESP::null_bulk_string();
-            write!(self.io, "{resp}")
-        }
+           RESP::None(TypedNone::String)
+        };
+        
+        Ok(res)
     }
 
     /// BLPOP is a blocking list pop primitive. It is the blocking version of LPOP
@@ -116,16 +107,14 @@ impl Redis {
     /// ```
     /// BLPOP key [key ...] timeout
     /// ```
-    pub fn blpop(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn blpop(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let err = || wrong_num_arguments("blpop");
 
-        let key = args.pop_front().ok_or(err())?.hashable()?;
+        let key = args.pop_front().ok_or(err())?;
         let now = std::time::Instant::now();
         let mut time_out: f64 = args
             .pop_front()
             .unwrap_or("0.0".into())
-            .string()
-            .ok_or(syntax_error())?
             .parse()
             .map_err(|_| syntax_error())?;
 
@@ -141,14 +130,13 @@ impl Redis {
             };
             if let Some(v) = list.pop_front() {
                 let resp: RESP = vec![key.into(), v].into();
-                return write!(self.io, "{resp}");
+                return Ok(resp)
             }
             drop(store);
             sleep(Duration::from_millis(1));
         }
 
-        let resp = RESP::null_array();
-        write!(self.io, "{resp}")
+        Ok(RESP::None(TypedNone::Array))
     }
 
     /// Returns the specified elements of the list stored at key. The offsets start
@@ -161,11 +149,11 @@ impl Redis {
     /// ```
     /// LRANGE key start stop
     /// ```
-    pub fn lrange(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn lrange(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let err = || wrong_num_arguments("lrange");
 
         let mut store = self.store.lock().unwrap();
-        let key = args.pop_front().ok_or(err())?.hashable()?;
+        let key = args.pop_front().ok_or(err())?;
         let list = store
             .kv
             .entry(key)
@@ -177,15 +165,11 @@ impl Redis {
         let mut start: isize = args
             .pop_front()
             .ok_or(err())?
-            .string()
-            .ok_or(syntax_error())?
             .parse()
             .unwrap();
         let mut end: isize = args
             .pop_front()
             .ok_or(err())?
-            .string()
-            .ok_or(syntax_error())?
             .parse()
             .unwrap();
 
@@ -201,7 +185,7 @@ impl Redis {
 
         let resp: RESP = list.range(start..end).cloned().collect::<Vec<_>>().into();
 
-        write!(self.io, "{resp}")
+        Ok(resp)
     }
 
     /// Returns the length of the list stored at key. If key does not exist,
@@ -210,12 +194,11 @@ impl Redis {
     /// ```
     /// LLEN key
     /// ```
-    pub fn llen(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn llen(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let store = self.store.lock().unwrap();
         let key = args
             .pop_front()
-            .ok_or(wrong_num_arguments("llen"))?
-            .hashable()?;
+            .ok_or(wrong_num_arguments("llen"))?;
 
         let n: RESP = match store.kv.get(&key).and_then(|v| v.list()) {
             Some(l) => l.len(),
@@ -223,6 +206,6 @@ impl Redis {
         }
         .into();
 
-        write!(self.io, "{n}")
+        Ok(n)
     }
 }

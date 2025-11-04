@@ -1,8 +1,8 @@
 use super::Redis;
 use super::Command;
 use super::errors::{out_of_range, syntax_error, wrong_num_arguments, wrong_type};
-use crate::redis::value::Value;
-use crate::resp::RESP;
+use super::value::Value;
+use crate::resp::{TypedNone, RESP};
 use std::ops::Add;
 use std::time::Duration;
 
@@ -14,24 +14,20 @@ impl Redis {
     /// SET key value [NX | XX] [GET] [EX seconds | PX milliseconds |
     ///   EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL]
     /// ```
-    pub fn set(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn set(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let err = || wrong_num_arguments("set");
         let mut store = self.store.lock().unwrap();
-        let key = args.pop_front().ok_or(err())?.hashable()?;
+        let key  = args.pop_front().ok_or(err())?;
         let value = args.pop_front().ok_or(wrong_num_arguments("set"))?;
         store.kv.insert(key.clone(), value.into());
 
         if args.len() > 0 {
             let unit = args
                 .pop_front()
-                .ok_or(err())?
-                .string()
-                .ok_or(syntax_error())?;
+                .ok_or(err())?;
             let mut time = args
                 .pop_front()
                 .ok_or(err())?
-                .string()
-                .ok_or(syntax_error())?
                 .parse()
                 .map_err(|_| syntax_error())?;
             if unit.to_lowercase() == "ex" {
@@ -46,8 +42,7 @@ impl Redis {
             }
         }
 
-        let resp: RESP = "OK".into();
-        write!(self.io, "{resp}")
+        Ok("OK".into())
     }
 
     /// Get the value of key. If the key does not exist the special value
@@ -56,20 +51,21 @@ impl Redis {
     /// ```
     /// GET key
     /// ```
-    pub fn get(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn get(&mut self, mut args: Command) -> std::io::Result<RESP> {
         self.remove_expired();
         let store = self.store.lock().unwrap();
 
         let key = args
             .pop_front()
-            .ok_or(wrong_num_arguments("get"))?
-            .hashable()?;
-        if let Some(v) = store.kv.get(&key) {
-            let resp: RESP = v.string().ok_or(wrong_type())?.clone().into();
-            write!(self.io, "{resp}")
+            .ok_or(wrong_num_arguments("get"))?;
+        
+        let resp = if let Some(v) = store.kv.get(&key) {
+             v.string().ok_or(wrong_type())?.clone().into()
         } else {
-            write!(self.io, "{}", RESP::null_bulk_string())
-        }
+            RESP::None(TypedNone::String)
+        };
+        
+        Ok(resp)
     }
 
     /// Increments the number stored at key by one. If the key does not exist, 
@@ -79,11 +75,10 @@ impl Redis {
     /// ```
     /// INCR key
     /// ```
-    pub fn incr(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn incr(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let key = args
             .pop_front()
-            .ok_or(wrong_num_arguments("incr"))?
-            .hashable()?;
+            .ok_or(wrong_num_arguments("incr"))?;
         let mut store = self.store.lock().unwrap();
         let val = store
             .kv
@@ -97,8 +92,7 @@ impl Redis {
         
         // let v = .string().ok_or(out_of_range())?
         *val = result_value.to_string();
-        let resp: RESP = result_value.into();
-        write!(self.io, "{resp}")
+        Ok(result_value.into())
     }
 
     /// Removes expired keys from the kv store

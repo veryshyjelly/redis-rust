@@ -1,7 +1,7 @@
-use super::Hashable;
 use super::RESP;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use crate::resp::resp::TypedNone;
 
 impl Display for RESP {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -20,25 +20,7 @@ impl Display for RESP {
             RESP::Attributes(a) => RESP::fmt_attributes(a, f),
             RESP::Set(s) => RESP::fmt_set(s, f),
             RESP::Push(p) => RESP::fmt_push(p, f),
-            RESP::None => RESP::fmt_none(f),
-        }
-    }
-}
-
-impl Display for Hashable {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Hashable::String(s) => RESP::fmt_simple_string(s, f),
-            Hashable::Integer(i) => RESP::fmt_integer(i, f),
-            Hashable::Array(arr) => {
-                write!(f, "*{}\r\n", arr.len())?;
-                for a in arr {
-                    write!(f, "{a}")?;
-                }
-                Ok(())
-            }
-            Hashable::Boolean(b) => RESP::fmt_boolean(b, f),
-            Hashable::None => RESP::fmt_none(f),
+            RESP::None(n) => RESP::fmt_none(n, f),
         }
     }
 }
@@ -88,26 +70,26 @@ impl RESP {
     pub fn fmt_verbatim_string(s: &(String, String), f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "={}\r\n{}:{}\r\n", s.1.len(), s.0, s.1)
     }
-    pub fn fmt_map(m: &HashMap<Hashable, RESP>, f: &mut Formatter<'_>) -> std::fmt::Result {
+    pub fn fmt_map(m: &HashMap<String, RESP>, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "%{}\r\n", m.len())?;
         for (k, v) in m {
-            write!(f, "{k}")?;
+            Self::fmt_bulk_string(k, f)?;
             write!(f, "{v}")?;
         }
         Ok(())
     }
-    pub fn fmt_attributes(m: &HashMap<Hashable, RESP>, f: &mut Formatter<'_>) -> std::fmt::Result {
+    pub fn fmt_attributes(m: &HashMap<String, RESP>, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "|{}\r\n", m.len())?;
         for (k, v) in m {
-            write!(f, "{k}")?;
+            Self::fmt_bulk_string(k, f)?;
             write!(f, "{v}")?;
         }
         Ok(())
     }
-    pub fn fmt_set(s: &HashSet<Hashable>, f: &mut Formatter<'_>) -> std::fmt::Result {
+    pub fn fmt_set(s: &HashSet<String>, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "~{}\r\n", s.len())?;
         for v in s {
-            write!(f, "{v}")?;
+            Self::fmt_bulk_string(v, f)?;
         }
         Ok(())
     }
@@ -118,13 +100,11 @@ impl RESP {
         }
         Ok(())
     }
-    pub fn fmt_none(f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "_\r\n")
-    }
-    pub fn null_bulk_string() -> String {
-        "$-1\r\n".into()
-    }
-    pub fn null_array() -> String {
-        "*-1\r\n".into()
+    pub fn fmt_none(n: &TypedNone, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match n {
+            TypedNone::String => write!(f, "$-1\r\n"),
+            TypedNone::Array => write!(f, "*-1\r\n"),
+            TypedNone::Nil => write!(f, "_\r\n")
+        }
     }
 }

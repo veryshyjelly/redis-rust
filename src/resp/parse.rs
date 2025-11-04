@@ -1,4 +1,4 @@
-use super::resp::RESP;
+use super::resp::{TypedNone, RESP};
 use super::resp::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -54,7 +54,7 @@ impl RESP {
         let (mut parsed, length) = Self::parse_integer(data)?;
         let length = length.int()?;
         if length == -1 {
-            return Some((parsed, RESP::None));
+            return Some((parsed, RESP::None(TypedNone::String)));
         }
         if data[parsed..].len() < length as usize + 2 {
             return None;
@@ -69,7 +69,7 @@ impl RESP {
         let (mut parsed, n) = Self::parse_integer(data)?;
         let n = n.int()?;
         if n == -1 {
-            return Some((parsed, RESP::None));
+            return Some((parsed, RESP::None(TypedNone::Array)));
         }
 
         let mut res = vec![];
@@ -85,7 +85,7 @@ impl RESP {
 
     fn parse_null(data: &[u8]) -> Result {
         if let Some(idx) = find_crlf(data) {
-            return Some((idx + 2, RESP::None));
+            return Some((idx + 2, RESP::None(TypedNone::Nil)));
         }
         None
     }
@@ -127,7 +127,7 @@ impl RESP {
             parsed += p;
             let (p, value) = Self::parse(&data[parsed..])?;
             parsed += p;
-            res.insert(key.hashable().ok()?, value);
+            res.insert(key.string()?, value);
         }
 
         Some((parsed, RESP::Map(res)))
@@ -146,7 +146,7 @@ impl RESP {
         for _ in 1..count {
             let (p, value) = Self::parse(&data[parsed..])?;
             parsed += p;
-            res.insert(value.hashable().ok()?);
+            res.insert(value.string()?);
         }
 
         Some((parsed, RESP::Set(res)))

@@ -1,4 +1,4 @@
-use crate::resp::{Hashable, RESP};
+use crate::resp::{RESP};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
@@ -17,17 +17,17 @@ pub enum Value {
 #[derive(Clone)]
 pub struct StreamEntry {
     pub id: StreamEntryID,
-    pub data: HashMap<Hashable, RESP>,
+    pub data: HashMap<String, String>,
 }
 
 impl Into<RESP> for StreamEntry {
     fn into(self) -> RESP {
         let mut res: Vec<RESP> = vec![];
         res.push(self.id.to_string().into());
-        let mut kvs = vec![];
+        let mut kvs: Vec<RESP> = vec![];
         for (k, v) in &self.data {
             kvs.push(k.to_owned().into());
-            kvs.push(v.to_owned());
+            kvs.push(v.to_owned().into());
         }
         res.push(kvs.into());
         res.into()
@@ -106,20 +106,26 @@ impl StreamEntryID {
     }
 }
 
-impl Into<Value> for RESP {
+// impl Into<Value> for RESP {
+//     fn into(self) -> Value {
+//         let res = match self {
+//             RESP::SimpleString(s) => s,
+//             RESP::BulkString(s) => s,
+//             RESP::SimpleError(e) => e,
+//             RESP::BulkError(e) => e,
+//             RESP::Integer(i) => i.to_string(),
+//             RESP::Boolean(b) => b.to_string(),
+//             RESP::Double(d) => d.to_string(),
+//             RESP::BigNumber(b) => b,
+//             _ => panic!("")
+//         };
+//         Value::String(res)
+//     }
+// }
+
+impl Into<Value> for String {
     fn into(self) -> Value {
-        let res = match self {
-            RESP::SimpleString(s) => s,
-            RESP::BulkString(s) => s,
-            RESP::SimpleError(e) => e,
-            RESP::BulkError(e) => e,
-            RESP::Integer(i) => i.to_string(),
-            RESP::Boolean(b) => b.to_string(),
-            RESP::Double(d) => d.to_string(),
-            RESP::BigNumber(b) => b,
-            _ => panic!("")
-        };
-        Value::String(res)
+        Value::String(self)
     }
 }
 

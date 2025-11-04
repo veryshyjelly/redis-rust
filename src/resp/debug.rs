@@ -1,5 +1,4 @@
 use super::RESP;
-use crate::resp::resp::Hashable;
 use std::fmt::{Debug, Formatter, write};
 
 impl Debug for RESP {
@@ -19,19 +18,8 @@ impl Debug for RESP {
             RESP::Attributes(a) => write!(f, "{a:?}"),
             RESP::Set(s) => write!(f, "{s:?}"),
             RESP::Push(p) => write!(f, "{p:?}"),
-            RESP::None => write!(f, "None"),
+            RESP::None(_) => write!(f, "None"),
         }
     }
 }
 
-impl Debug for Hashable {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Hashable::String(s) => write!(f, "{s:?}"),
-            Hashable::Integer(i) => write!(f, "{i}"),
-            Hashable::Array(a) => write!(f, "{a:?}"),
-            Hashable::Boolean(b) => write!(f, "{b}"),
-            Hashable::None => write!(f, "None"),
-        }
-    }
-}

@@ -2,7 +2,7 @@ use super::{Redis, Command};
 use super::errors::{syntax_error, wrong_num_arguments, wrong_type};
 use super::utils::make_io_error;
 use super::value::{StreamEntry, StreamEntryID, Value};
-use crate::resp::RESP;
+use crate::resp::{TypedNone, RESP};
 use std::collections::{HashMap};
 use std::thread::sleep;
 use std::time::Duration;
@@ -15,10 +15,10 @@ impl Redis {
     /// XADD key [NOMKSTREAM] [KEEPREF | DELREF | ACKED] [<MAXLEN | MINID>
     ///   [= | ~] threshold [LIMIT count]] <* | id> field value [field value ...]
     /// ```
-    pub fn xadd(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn xadd(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let err = || wrong_num_arguments("xadd");
 
-        let key = args.pop_front().ok_or(err())?.hashable()?;
+        let key = args.pop_front().ok_or(err())?;
         let mut store = self.store.lock().unwrap();
         let stream = store
             .kv
@@ -28,12 +28,10 @@ impl Redis {
             .ok_or(wrong_type())?;
         let id = args
             .pop_front()
-            .ok_or(err())?
-            .string()
-            .ok_or(syntax_error())?;
+            .ok_or(err())?;
         let mut data = HashMap::new();
         while args.len() > 0 {
-            let key = args.pop_front().ok_or(err())?.hashable()?;
+            let key = args.pop_front().ok_or(err())?;
             let value = args.pop_front().ok_or(err())?;
             data.insert(key, value);
         }
@@ -66,8 +64,7 @@ impl Redis {
             ))
         } else if stream.is_empty() || &entry > stream.last().unwrap() {
             stream.push(entry);
-            let resp: RESP = id.to_string().into();
-            write!(self.io, "{resp}")
+            Ok(id.to_string().into())
         } else {
             Err(make_io_error(
                 "ERR The ID specified in XADD is equal or smaller than the target stream top item",
@@ -81,29 +78,23 @@ impl Redis {
     /// ```
     /// XREAD [COUNT count] [BLOCK milliseconds] STREAMS key [key ...] id [id ...]
     /// ```
-    pub fn xread(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn xread(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let err = || wrong_num_arguments("xread");
 
         let method = args
             .pop_front()
             .ok_or(err())?
-            .string()
-            .ok_or(syntax_error())?
             .to_lowercase();
 
         let mut time_out: u128 = if method == "block" {
             let timeout_value = args
                 .pop_front()
                 .ok_or(err())?
-                .string()
-                .ok_or(syntax_error())?
                 .parse()
                 .map_err(|_| syntax_error())?;
             let _streams = args
                 .pop_front()
-                .ok_or(err())?
-                .string()
-                .ok_or(syntax_error())?;
+                .ok_or(err())?;
             timeout_value
         } else {
             1
@@ -116,20 +107,18 @@ impl Redis {
         let now = std::time::Instant::now();
 
         let stream_count = args.len() / 2;
-        let keys: Vec<RESP> = args.drain(0..stream_count).collect();
+        let keys: Vec<String> = args.drain(0..stream_count).collect();
         let mut starts = vec![];
 
         for key in &keys {
             let start = args
                 .pop_front()
-                .ok_or(err())?
-                .string()
-                .ok_or(syntax_error())?;
+                .ok_or(err())?;
             let start = if start == "$" {
                 let mut store = self.store.lock().unwrap();
                 let stream = store
                     .kv
-                    .entry(key.clone().hashable()?)
+                    .entry(key.clone())
                     .or_insert(Value::new_stream())
                     .stream_mut()
                     .ok_or(make_io_error(
@@ -154,7 +143,7 @@ impl Redis {
             for (key, start) in keys.iter().zip(starts.iter()) {
                 let stream = store
                     .kv
-                    .entry(key.clone().hashable()?)
+                    .entry(key.clone())
                     .or_insert(Value::new_stream())
                     .stream_mut()
                     .ok_or(make_io_error(
@@ -171,7 +160,7 @@ impl Redis {
                     .map(|v| v.clone().into())
                     .collect::<Vec<_>>()
                     .into();
-                result.push(vec![key.clone(), resp].into())
+                result.push(vec![key.clone().into(), resp].into())
             }
 
             if result.len() == 0 {
@@ -180,12 +169,10 @@ impl Redis {
                 continue;
             }
 
-            let resp: RESP = result.into();
-            return write!(self.io, "{resp}");
+            return Ok(result.into());
         }
 
-        let resp = RESP::null_array();
-        write!(self.io, "{resp}")
+        Ok(RESP::None(TypedNone::Array))
     }
 
     /// The command returns the stream entries matching a given range of IDs.
@@ -194,9 +181,9 @@ impl Redis {
     /// ```
     /// XRANGE key start end [COUNT count]
     /// ```
-    pub fn xrange(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn xrange(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let err = || wrong_num_arguments("xrange");
-        let key = args.pop_front().ok_or(err())?.hashable()?;
+        let key = args.pop_front().ok_or(err())?;
         let mut store = self.store.lock().unwrap();
         let stream = store
             .kv
@@ -209,14 +196,10 @@ impl Redis {
 
         let start = args
             .pop_front()
-            .ok_or(err())?
-            .string()
-            .ok_or(syntax_error())?;
+            .ok_or(err())?;
         let end = args
             .pop_front()
-            .ok_or(err())?
-            .string()
-            .ok_or(syntax_error())?;
+            .ok_or(err())?;
 
         let start = if start == "-" {
             0
@@ -235,7 +218,7 @@ impl Redis {
         let res = stream.get(start..end).unwrap_or_default().to_vec();
         let resp: RESP = res.into_iter().map(|v| v.into()).collect::<Vec<_>>().into();
 
-        write!(self.io, "{resp}")
+        Ok(resp)
     }
 
     /// Returns the number of entries inside a stream. If the specified key does not
@@ -245,12 +228,11 @@ impl Redis {
     /// ```
     /// XLEN key
     /// ```
-    pub fn xlen(&mut self, mut args: Command) -> std::io::Result<()> {
+    pub fn xlen(&mut self, mut args: Command) -> std::io::Result<RESP> {
         let store = self.store.lock().unwrap();
         let key = args
             .pop_front()
-            .ok_or(wrong_num_arguments("xlen"))?
-            .hashable()?;
+            .ok_or(wrong_num_arguments("xlen"))?;
 
         let n: RESP = match store.kv.get(&key).and_then(|v| v.stream()) {
             Some(l) => l.len(),
@@ -258,6 +240,6 @@ impl Redis {
         }
         .into();
 
-        write!(self.io, "{n}")
+        Ok(n)
     }
 }

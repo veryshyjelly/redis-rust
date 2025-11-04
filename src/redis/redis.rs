@@ -1,21 +1,22 @@
 use super::value::Value;
-use crate::resp::{Hashable, RESP};
+use crate::resp::{RESP};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
+use crate::redis::errors::syntax_error;
 
 pub trait ReadWrite: Read + Write {}
 
 impl ReadWrite for TcpStream {}
 
 pub struct RedisStore {
-    pub kv: HashMap<Hashable, Value>,
-    pub expiry_queue: BTreeMap<std::time::Instant, Hashable>,
-    pub expiry_time: HashMap<Hashable, std::time::Instant>,
+    pub kv: HashMap<String, Value>,
+    pub expiry_queue: BTreeMap<std::time::Instant, String>,
+    pub expiry_time: HashMap<String, std::time::Instant>,
 }
 
-pub type Command = VecDeque<RESP>;
+pub type Command = VecDeque<String>;
 
 pub struct Redis {
     pub io: Box<dyn ReadWrite>,
@@ -75,12 +76,25 @@ impl Redis {
                 #[cfg(debug_assertions)]
                 println!("{cmd:?}");
                 
-                let cmd = cmd.into_iter().collect();
-
-                if let Some(err) = self.execute(cmd).err() {
-                    let e = RESP::SimpleError(format!("{err}"));
-                    write!(self.io, "{e}")?;
+                let mut args = VecDeque::new();
+                for c in cmd {
+                    match c.string() {
+                        Some(v) => args.push_back(v),
+                        None => {
+                            let e = RESP::SimpleError(syntax_error().to_string());
+                            write!(self.io, "{e}")?;
+                            return Ok(parsed);
+                        }
+                    };
                 }
+                
+                match self.execute(args) {
+                    Ok(resp) => write!(self.io, "{resp}")?,
+                    Err(err) => {
+                        let e = RESP::SimpleError(format!("{err}"));
+                        write!(self.io, "{e}")?;
+                    }
+                };
             } else {
                 // self.io.write("+PONG\r\n".as_bytes())?;
             }
