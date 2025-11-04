@@ -32,6 +32,9 @@ impl Redis {
             "xlen" => self.xlen(cmd),
             "incr" => self.incr(cmd),
             "multi" => self.multi(cmd),
+            "exec" => {
+                Err(make_io_error("ERR EXEC without MULTI"))
+            }
             _ => self.invalid(cmd),
         }
     }
