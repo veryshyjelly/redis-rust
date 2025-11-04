@@ -20,12 +20,24 @@ impl Display for RESP {
             RESP::Attributes(a) => RESP::fmt_attributes(a, f),
             RESP::Set(s) => RESP::fmt_set(s, f),
             RESP::Push(p) => RESP::fmt_push(p, f),
+            RESP::RDB(v) => RESP::fmt_rdb(v, f),
             RESP::None(n) => RESP::fmt_none(n, f),
         }
     }
 }
 
 impl RESP {
+    pub fn as_bytes(&self) -> Vec<u8> {
+        match self {
+            RESP::RDB(val) => {
+                let mut res = format!("${}\r\n", val.len()).as_bytes().to_vec();
+                res.extend_from_slice(&val[..]);
+                res
+            }
+            _ => self.to_string().as_bytes().to_vec(),
+        }
+    }
+
     pub fn fmt_simple_string(s: &String, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "+{s}\r\n")
     }
@@ -100,6 +112,11 @@ impl RESP {
         }
         Ok(())
     }
+
+    pub fn fmt_rdb(_: &Vec<u8>, _: &mut Formatter<'_>) -> std::fmt::Result {
+        panic!("do not ever call this method again!")
+    }
+
     pub fn fmt_none(n: &TypedNone, f: &mut Formatter<'_>) -> std::fmt::Result {
         match n {
             TypedNone::String => write!(f, "$-1\r\n"),

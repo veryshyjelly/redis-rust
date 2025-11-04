@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::marker::PhantomData;
 
 #[derive(Copy, Clone)]
 pub enum TypedNone {
@@ -24,6 +23,7 @@ pub enum RESP {
     Attributes(HashMap<String, RESP>), // |
     Set(HashSet<String>),              // ~
     Push(Vec<RESP>),                   // >
+    RDB(Vec<u8>),                      // $
     None(TypedNone),                   // _
 }
 

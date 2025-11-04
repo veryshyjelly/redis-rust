@@ -1,8 +1,8 @@
-use super::Command;
-use super::Redis;
 use super::errors::wrong_num_arguments;
 use super::utils::make_io_error;
-use crate::resp::{RESP, TypedNone};
+use super::Command;
+use super::Redis;
+use crate::resp::{TypedNone, RESP};
 
 impl Redis {
     pub fn execute(&mut self, mut cmd: Command) -> std::io::Result<RESP> {
@@ -35,6 +35,8 @@ impl Redis {
             "multi" => self.multi(cmd),
             "exec" => Err(make_io_error("ERR EXEC without MULTI")),
             "discard" => Err(make_io_error("ERR DISCARD without MULTI")),
+            "replconf" => self.replconf(cmd),
+            "psync" => self.psync(cmd),
             _ => self.invalid(cmd),
         }
     }

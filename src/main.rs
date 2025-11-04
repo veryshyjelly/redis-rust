@@ -4,7 +4,7 @@ mod slave;
 
 use crate::redis::{Info, RedisStore, Role};
 use crate::slave::Slave;
-use rand::{Rng, distr::Alphanumeric};
+use rand::{distr::Alphanumeric, Rng};
 use redis::Redis;
 use std::net::{Ipv4Addr, TcpListener};
 use std::str::FromStr;
@@ -18,14 +18,13 @@ fn main() -> std::io::Result<()> {
     } else {
         6379
     };
-    
+
     let redis_store = Arc::new(Mutex::new(RedisStore {
         kv: Default::default(),
         expiry_queue: Default::default(),
         expiry_time: Default::default(),
         info: Info::new_slave(port),
     }));
-
 
     let role = if let Some(idx) = args.iter().position(|v| v == "--replicaof") {
         let mut addr = args[idx + 1].split(" ");

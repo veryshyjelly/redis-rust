@@ -49,7 +49,7 @@ impl Info {
 
     pub fn new_slave(listening_port: u16) -> Self {
         Info {
-            listening_port, 
+            listening_port,
             connected_client: 0,
             role: Role::Slave,
             master_id: "?".into(),

@@ -3,6 +3,7 @@ mod execute;
 pub mod info;
 mod list;
 mod redis;
+mod replication;
 mod stream;
 mod string;
 mod transaction;

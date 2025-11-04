@@ -1,5 +1,5 @@
 use crate::redis::RedisStore;
-use crate::resp::{RESP, RESPHandler};
+use crate::resp::{RESPHandler, RESP};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::sync::{Arc, Mutex};
 

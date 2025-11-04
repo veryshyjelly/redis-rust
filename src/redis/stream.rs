@@ -2,7 +2,7 @@ use super::errors::{syntax_error, wrong_num_arguments, wrong_type};
 use super::utils::make_io_error;
 use super::value::Value;
 use super::{Command, Redis};
-use crate::resp::{RESP, TypedNone};
+use crate::resp::{TypedNone, RESP};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -218,7 +218,11 @@ impl Redis {
         };
 
         let res = stream.get(start..end).unwrap_or_default().to_vec();
-        let resp: RESP = res.into_iter().map(|v| v.into()).collect::<Vec<RESP>>().into();
+        let resp: RESP = res
+            .into_iter()
+            .map(|v| v.into())
+            .collect::<Vec<RESP>>()
+            .into();
 
         Ok(resp)
     }

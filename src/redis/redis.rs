@@ -1,8 +1,8 @@
 use super::errors::syntax_error;
 use super::info::Info;
 use super::value::Value;
-use crate::resp::parse::ReadWrite;
-use crate::resp::{RESP, RESPHandler};
+use crate::resp::ReadWrite;
+use crate::resp::{RESPHandler, RESP};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::net::TcpStream;
 use std::ops::{AddAssign, SubAssign};
@@ -20,10 +20,16 @@ pub struct RedisStore {
 pub type Command = VecDeque<String>;
 
 pub struct Redis {
+    pub slave_conf: Option<SlaveConfig>,
     pub resp: RESPHandler,
     pub store: Arc<Mutex<RedisStore>>,
     pub is_transaction: bool,
     pub transaction: Vec<Command>,
+}
+
+pub struct SlaveConfig {
+    pub port: u16,
+    pub capabilities: Vec<String>,
 }
 
 impl Redis {
@@ -33,6 +39,7 @@ impl Redis {
             store,
             is_transaction: false,
             transaction: vec![],
+            slave_conf: None,
         }
     }
 

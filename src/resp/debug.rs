@@ -1,5 +1,5 @@
 use super::RESP;
-use std::fmt::{Debug, Formatter, write};
+use std::fmt::{Debug, Formatter};
 
 impl Debug for RESP {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -18,6 +18,7 @@ impl Debug for RESP {
             RESP::Attributes(a) => write!(f, "{a:?}"),
             RESP::Set(s) => write!(f, "{s:?}"),
             RESP::Push(p) => write!(f, "{p:?}"),
+            RESP::RDB(v) => write!(f, "RDB FILE({} bytes)", v.len()),
             RESP::None(_) => write!(f, "None"),
         }
     }
