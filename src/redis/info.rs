@@ -7,6 +7,8 @@ use std::net::Ipv4Addr;
 pub struct Info {
     pub connected_client: usize,
     pub role: Role,
+    pub master_id: String,
+    pub offset: usize,
 }
 
 pub enum Role {
@@ -28,15 +30,19 @@ impl Display for Info {
         writeln!(f, "connected_clients:{}", self.connected_client)?;
         writeln!(f, "# Replication")?;
         writeln!(f, "role:{}", self.role)?;
+        writeln!(f, "master_replid:{}", self.master_id)?;
+        writeln!(f, "master_repl_offset:{}", self.offset)?; 
         Ok(())
     }
 }
 
 impl Info {
-    pub fn from_role(role: Role) -> Self {
+    pub fn from_role(role: Role, master_id: String, offset: usize) -> Self {
         Info {
-            connected_client: 0, role
-        } 
+            connected_client: 0, role,
+            master_id,
+            offset
+        }
     }
 }
 

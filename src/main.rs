@@ -2,6 +2,7 @@ mod redis;
 mod resp;
 
 use crate::redis::{Info, RedisStore, Role};
+use rand::{distr::Alphanumeric, Rng};
 use redis::Redis;
 use std::net::{Ipv4Addr, TcpListener};
 use std::str::FromStr;
@@ -16,7 +17,7 @@ fn main() -> std::io::Result<()> {
     } else {
         6379
     };
-    
+
     let role = if let Some(idx) = args.iter().position(|v| v == "--replicaof") {
         let mut addr = args[idx + 1].split(" ");
         let ip_str = addr.next().unwrap();
@@ -31,13 +32,19 @@ fn main() -> std::io::Result<()> {
         Role::Master
     };
 
+    let master_id: String = rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(40)
+        .map(char::from)
+        .collect();
+
     let listener = TcpListener::bind(format!("127.0.0.1:{port}"))?;
 
     let redis_store = Arc::new(Mutex::new(RedisStore {
         kv: Default::default(),
         expiry_queue: Default::default(),
         expiry_time: Default::default(),
-        info: Info::from_role(role),
+        info: Info::from_role(role, master_id.to_lowercase(), 0),
     }));
 
     for stream in listener.incoming() {
