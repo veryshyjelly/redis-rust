@@ -5,9 +5,10 @@ use std::fmt::{Display, Formatter};
 #[derive(Default)]
 pub struct Info {
     pub connected_client: usize,
+    pub listening_port: u16,
     pub role: Role,
     pub master_id: String,
-    pub offset: usize,
+    pub offset: isize,
 }
 
 pub enum Role {
@@ -36,12 +37,23 @@ impl Display for Info {
 }
 
 impl Info {
-    pub fn from_role(role: Role, master_id: String, offset: usize) -> Self {
+    pub fn from_role(listening_port: u16, role: Role, master_id: String, offset: isize) -> Self {
         Info {
+            listening_port,
             connected_client: 0,
             role,
             master_id,
             offset,
+        }
+    }
+
+    pub fn new_slave(listening_port: u16) -> Self {
+        Info {
+            listening_port, 
+            connected_client: 0,
+            role: Role::Slave,
+            master_id: "?".into(),
+            offset: -1,
         }
     }
 }

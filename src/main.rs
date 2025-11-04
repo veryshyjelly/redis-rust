@@ -13,12 +13,19 @@ use std::thread;
 
 fn main() -> std::io::Result<()> {
     let args: Vec<_> = std::env::args().collect();
-
     let port = if let Some(idx) = args.iter().position(|v| v == "--port") {
         args[idx + 1].parse().unwrap()
     } else {
         6379
     };
+    
+    let redis_store = Arc::new(Mutex::new(RedisStore {
+        kv: Default::default(),
+        expiry_queue: Default::default(),
+        expiry_time: Default::default(),
+        info: Info::new_slave(port),
+    }));
+
 
     let role = if let Some(idx) = args.iter().position(|v| v == "--replicaof") {
         let mut addr = args[idx + 1].split(" ");
@@ -29,34 +36,37 @@ fn main() -> std::io::Result<()> {
             Ipv4Addr::from_str(ip_str).unwrap()
         };
         let port: u16 = addr.next().unwrap().parse().unwrap();
-        let mut slave = Slave::new(ip, port)?;
-        slave.handle();
+        let store = redis_store.clone();
+        thread::spawn(move || -> std::io::Result<()> {
+            let mut slave = Slave::new(ip, port, store)?;
+            slave.handle()
+        });
         Role::Slave
     } else {
         Role::Master
     };
 
-    let master_id: String = rand::rng()
-        .sample_iter(&Alphanumeric)
-        .take(40)
-        .map(char::from)
-        .collect();
+    match role {
+        Role::Master => {
+            let master_id: String = rand::rng()
+                .sample_iter(&Alphanumeric)
+                .take(40)
+                .map(char::from)
+                .collect();
+            let info = Info::from_role(port, role, master_id.to_lowercase(), 0);
+            redis_store.lock().unwrap().info = info;
+        }
+        Role::Slave => {}
+    };
 
     let listener = TcpListener::bind(format!("127.0.0.1:{port}"))?;
-
-    let redis_store = Arc::new(Mutex::new(RedisStore {
-        kv: Default::default(),
-        expiry_queue: Default::default(),
-        expiry_time: Default::default(),
-        info: Info::from_role(role, master_id.to_lowercase(), 0),
-    }));
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let store = redis_store.clone();
                 thread::spawn(|| -> std::io::Result<()> {
-                     Redis::new(Box::new(stream), store).handle()
+                    Redis::new(Box::new(stream), store).handle()
                 });
                 println!("accepted new connection");
             }

@@ -19,7 +19,7 @@ impl RESPHandler {
             buf: vec![0; 1024],
         }
     }
-    
+
     pub fn send(&mut self, val: RESP) -> std::io::Result<()> {
         write!(self.io, "{val}")
     }

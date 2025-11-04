@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 impl ReadWrite for TcpStream {}
 
 pub struct RedisStore {
-    pub info: Info,
     pub kv: HashMap<String, Value>,
+    pub info: Info,
     pub expiry_queue: BTreeMap<std::time::Instant, String>,
     pub expiry_time: HashMap<String, std::time::Instant>,
 }
@@ -43,13 +43,13 @@ impl Redis {
             .info
             .connected_client
             .add_assign(1);
-        
+
         loop {
             let cmd = match self.resp.next() {
                 Some(v) => v,
-                None => break
+                None => break,
             };
-            
+
             if let Some(cmd) = cmd.array() {
                 #[cfg(debug_assertions)]
                 println!("{cmd:?}");
@@ -82,7 +82,7 @@ impl Redis {
             .info
             .connected_client
             .sub_assign(1);
-        
+
         Ok(())
     }
 }

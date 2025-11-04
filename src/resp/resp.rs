@@ -68,6 +68,26 @@ impl RESP {
     impl_getter!(set, Set, HashSet<String>);
 }
 
+impl From<Vec<&str>> for RESP {
+    fn from(value: Vec<&str>) -> Self {
+        value
+            .into_iter()
+            .map(|v| v.to_string().into())
+            .collect::<Vec<RESP>>()
+            .into()
+    }
+}
+
+impl From<Vec<String>> for RESP {
+    fn from(value: Vec<String>) -> Self {
+        value
+            .into_iter()
+            .map(|v| v.into())
+            .collect::<Vec<RESP>>()
+            .into()
+    }
+}
+
 macro_rules! impl_into_resp {
     // single type to variant
     ($ty:ty => $variant:ident) => {
