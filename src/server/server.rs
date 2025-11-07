@@ -8,12 +8,12 @@ use crate::frame::{
 use crate::parser::Parser;
 use crate::store::Store;
 use bytes::BytesMut;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
 
 pub struct Server {
     pub slave_id: usize,
@@ -21,6 +21,7 @@ pub struct Server {
     pub store: Arc<Mutex<Store>>,
     pub output: mpsc::Sender<Frame>,
     pub transaction: VecDeque<Args>,
+    pub unsubscribe: HashMap<String, oneshot::Sender<bool>>,
     pub slave_config: Option<SlaveConfig>,
     pub(crate) in_transaction: bool,
 }
@@ -37,6 +38,7 @@ impl Server {
             store,
             output,
             transaction: VecDeque::new(),
+            unsubscribe: HashMap::new(),
             subscription_count: 0,
             in_transaction: false,
             slave_config: None,
