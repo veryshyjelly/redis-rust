@@ -10,7 +10,6 @@ use crate::store::Store;
 use bytes::BytesMut;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::thread::sleep;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -18,7 +17,6 @@ use tokio::sync::{Mutex, mpsc};
 
 pub struct Server {
     pub slave_id: usize,
-    pub asked_offset: usize,
     pub store: Arc<Mutex<Store>>,
     pub output: mpsc::Sender<Frame>,
     pub transaction: VecDeque<Args>,
@@ -34,7 +32,6 @@ pub struct SlaveConfig {
 impl Server {
     pub fn new(store: Arc<Mutex<Store>>, output: mpsc::Sender<Frame>, slave_id: usize) -> Self {
         Server {
-            asked_offset: 0,
             slave_id,
             store,
             output,
@@ -68,7 +65,7 @@ impl Server {
             }
         });
 
-        sleep(Duration::from_millis(1));
+        tokio::time::sleep(Duration::from_millis(1)).await;
 
         tokio::spawn(async move {
             let parser = Parser::new(Box::new(reader), buffer);

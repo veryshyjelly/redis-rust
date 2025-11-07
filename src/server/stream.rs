@@ -1,6 +1,4 @@
 use crate::frame::TypedNone;
-// use std::time::Duration;
-// use std::thread::sleep;
 use super::Result;
 use super::errors::*;
 use super::server::Server;
@@ -249,9 +247,6 @@ impl Server {
             if result.len() != 0 {
                 return Ok(result.into());
             }
-
-            // drop(store);
-            // sleep(Duration::from_millis(1));
         }
 
         Ok(Frame::None(TypedNone::Array))

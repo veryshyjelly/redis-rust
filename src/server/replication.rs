@@ -5,8 +5,7 @@ use crate::frame::{Frame, TypedNone};
 use crate::server::Args;
 use bytes::{Bytes, BytesMut};
 use std::mem;
-use std::thread::sleep;
-use std::time::Duration;
+use std::ops::AddAssign;
 use rand::random_range;
 use crate::frame::encode::AsBytes;
 
@@ -20,14 +19,14 @@ impl Server {
             .to_lowercase();
         match key.as_str() {
             "ack" => {
-                // let offset = args.pop_front().ok_or(wrong_num_arguments("replconf"))?;
-                let offset = self.store.lock().await.info.send_offset;
+                let offset = args.pop_front().ok_or(wrong_num_arguments("replconf"))?;
+                // let offset = self.store.lock().await.info.send_offset;
                 let slave_id = self.slave_id;
                 self.store
                     .lock()
                     .await
                     .slave_offsets
-                    .insert(slave_id, offset);
+                    .insert(slave_id, offset.parse().unwrap());
                 Ok("OK".into())
             }
             "getack" => {
@@ -116,17 +115,16 @@ impl Server {
         self.store.lock().await.slave_offsets.insert(slave_id, 0);
 
         let store = self.store.clone();
-        let mut asked_offset = self.asked_offset;
         
         tokio::spawn(async move {
             loop {
                 if let Ok(v) = ack_reader.recv().await {
                     // println!("got instructions to send get ack");
-                    sleep(Duration::from_millis(1));
-                    let store = store.lock().await;
+                    let mut store = store.lock().await;
+                    let asked_offset = *store.slave_asked_offsets.get(&slave_id).unwrap();
                     let send_offset = store.info.send_offset;
                     if send_offset > asked_offset {
-                        println!("send ack but don't know if she got :(");
+                        println!("asked for ack but don't know if she got the message :(");
                         if let Err(e) = px.send(v).await {
                             println!("stopping sending because {e}");
                             break;
@@ -134,7 +132,7 @@ impl Server {
                     } else {
                         // println!("but send offset was {send_offset} and ask_offset was {asked_offset}");
                     }
-                    asked_offset = send_offset;
+                    store.slave_asked_offsets.insert(slave_id, send_offset).unwrap();
                 } else {
                     break;
                 }
@@ -157,18 +155,27 @@ impl Server {
             .map_err(|_| syntax_error())?;
 
         let message: Frame = vec!["REPLCONF".to_string(), "GETACK".into(), "*".into()].into();
-        let _ = self
+
+        let now = std::time::Instant::now();
+        
+        let get_ack_channel = self
             .store
             .lock()
             .await
             .get_ack_channel
-            .clone()
-            .ok_or("broadcast not setup please fix")?
-            .send(message.clone());
+            .clone().ok_or("broadcast not setup please fix")?;
+        
+        let kv: Vec<_> = self.store.lock().await.slave_offsets.clone().into_iter().collect();
+        
+        for (slav, v) in kv {
+            self.store.lock().await.slave_asked_offsets.insert(slav, v);
+        }
+        
+        let _ = get_ack_channel.send(message.clone());
+        
         let mut b = BytesMut::new();
         message.encode_bytes(&mut b);
         
-        let now = std::time::Instant::now();
         loop {
             let send_offset = self.store.lock().await.info.send_offset;
             let ack_received = self
@@ -176,25 +183,28 @@ impl Server {
                 .lock()
                 .await
                 .slave_offsets
-                .values()
-                .filter(|&&x| {
-                    // println!("recv_offset = {x}, send_offset = {send_offset}");
+                .values_mut()
+                .filter(|&&mut x| {
                     x == send_offset
                 })
                 .count();
             
             if ack_received >= count_replicas || now.elapsed().as_millis() > timeout {
+                self
+                    .store
+                    .lock()
+                    .await
+                    .slave_offsets
+                    .values_mut()
+                    .filter(|&&mut x| {
+                        x == send_offset
+                    })
+                    .for_each(|x| {
+                        x.add_assign(b.len());
+                    });
+                self.store.lock().await.info.send_offset += b.len();
                 return Ok(ack_received.into());
             }
-            
-            let _ = self
-                .store
-                .lock()
-                .await
-                .get_ack_channel
-                .clone()
-                .ok_or("broadcast not setup please fix")?
-                .send(message.clone());
         }
     }
 }

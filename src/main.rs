@@ -35,6 +35,7 @@ async fn main() -> Result<(), Error> {
         broadcast: None,
         get_ack_channel: None,
         slave_offsets: HashMap::new(),
+        slave_asked_offsets: HashMap::new(),
     }));
 
     if let Some(idx) = args.iter().position(|v| v == "--replicaof") {
@@ -52,8 +53,10 @@ async fn main() -> Result<(), Error> {
         });
     } else {
         let (tx, _rx) = tokio::sync::broadcast::channel(64);
+        drop(_rx);
         let _ = redis_store.lock().await.broadcast.insert(tx);
         let (tx, _rx) = tokio::sync::broadcast::channel(64);
+        drop(_rx);
         let _ = redis_store.lock().await.get_ack_channel.insert(tx);
         let master_id: String = rand::rng()
             .sample_iter(&Alphanumeric)
