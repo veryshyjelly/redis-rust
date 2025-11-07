@@ -1,7 +1,10 @@
 #![allow(unused)]
 
-use super::utils::make_io_error;
 use std::io::Error;
+
+pub fn make_io_error(message: &str) -> Error {
+    Error::new(std::io::ErrorKind::InvalidData, message)
+}
 
 pub fn wrong_type() -> Error {
     make_io_error("WRONGTYPE Operation against a key holding the wrong kind of value")

@@ -1,15 +1,16 @@
-use super::Redis;
-use super::redis::Command;
-use crate::redis::errors::wrong_num_arguments;
-use crate::resp::RESP;
+use super::Args;
+use super::Result;
+use super::errors::wrong_num_arguments;
+use super::server::Server;
+use crate::frame::Frame;
 
-impl Redis {
-    pub fn multi(&mut self, _: Command) -> std::io::Result<RESP> {
-        self.is_transaction = true;
+impl Server {
+    pub fn multi(&mut self, _: Args) -> Result {
+        self.in_transaction = true;
         Ok("OK".into())
     }
 
-    pub fn transaction(&mut self, cmd: Command) -> std::io::Result<RESP> {
+    pub async fn transaction(&mut self, cmd: Args) -> Result {
         match cmd
             .get(0)
             .ok_or(wrong_num_arguments("exec"))?
@@ -17,7 +18,7 @@ impl Redis {
             .as_str()
         {
             "exec" => {
-                self.is_transaction = false;
+                self.in_transaction = false;
                 let commands: Vec<_> = self.transaction.drain(..).collect();
 
                 #[cfg(debug_assertions)]
@@ -25,9 +26,9 @@ impl Redis {
 
                 let mut res = vec![];
                 for v in commands {
-                    match self.execute(v) {
+                    match self.execute(v).await {
                         Ok(r) => res.push(r),
-                        Err(e) => res.push(RESP::SimpleError(format!("{e}"))),
+                        Err(e) => res.push(Frame::SimpleError(format!("{e}"))),
                     }
                 }
 
@@ -35,11 +36,11 @@ impl Redis {
             }
             "discard" => {
                 self.transaction.drain(..);
-                self.is_transaction = false;
+                self.in_transaction = false;
                 Ok("OK".into())
             }
             _ => {
-                self.transaction.push(cmd);
+                self.transaction.push_back(cmd);
                 Ok("QUEUED".into())
             }
         }

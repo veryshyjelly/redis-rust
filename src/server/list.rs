@@ -1,12 +1,13 @@
-use super::Command;
-use super::Redis;
-use super::errors::{syntax_error, wrong_num_arguments, wrong_type};
-use super::value::Value;
-use crate::resp::{RESP, TypedNone};
+use super::errors::*;
+use super::{Args, Result, server::Server};
+use crate::frame::Frame;
+use crate::frame::TypedNone;
+use crate::store::Value;
+use std::collections::VecDeque;
 use std::thread::sleep;
 use std::time::Duration;
 
-impl Redis {
+impl<'a> Server {
     /// Insert all the specified values at the tail of the list stored at key.
     /// If key does not exist, it is created as empty list before performing
     /// the push operation. When key holds a value that is not a list, an error is returned.
@@ -20,13 +21,13 @@ impl Redis {
     /// ```
     /// RPUSH key element [element ...]
     /// ```
-    pub fn rpush(&mut self, mut args: Command) -> std::io::Result<RESP> {
-        let mut store = self.store.lock().unwrap();
+    pub async fn rpush(&mut self, mut args: Args) -> Result {
+        let mut store = self.store.lock().await;
         let key = args.pop_front().ok_or(wrong_num_arguments("rpush"))?;
         let e = store
             .kv
             .entry(key)
-            .or_insert(Value::new_list())
+            .or_insert(Value::List(VecDeque::new()))
             .list_mut()
             .ok_or(wrong_type())?;
         args.into_iter().for_each(|v| e.push_back(v.into()));
@@ -46,13 +47,13 @@ impl Redis {
     /// ```
     /// LPUSH key element [element ...]
     /// ```
-    pub fn lpush(&mut self, mut args: Command) -> std::io::Result<RESP> {
-        let mut store = self.store.lock().unwrap();
+    pub async fn lpush(&mut self, mut args: Args) -> Result {
+        let mut store = self.store.lock().await;
         let key = args.pop_front().ok_or(wrong_num_arguments("lpush"))?;
         let e = store
             .kv
             .entry(key)
-            .or_insert(Value::new_list())
+            .or_insert(Value::List(VecDeque::new()))
             .list_mut()
             .ok_or(wrong_type())?;
         args.into_iter().for_each(|v| e.push_front(v.into()));
@@ -68,7 +69,7 @@ impl Redis {
     /// ```
     /// LPOP key [count]
     /// ```
-    pub fn lpop(&mut self, mut args: Command) -> std::io::Result<RESP> {
+    pub async fn lpop(&mut self, mut args: Args) -> Result {
         let key = args.pop_front().ok_or(wrong_num_arguments("lpop"))?;
         let count: usize = args
             .pop_front()
@@ -76,11 +77,11 @@ impl Redis {
             .parse()
             .map_err(|_| syntax_error())?;
 
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().await;
         let res = if let Some(list) = store.kv.get_mut(&key).and_then(|v| v.list_mut()) {
             let count = count.min(list.len());
             if count == 0 {
-                RESP::None(TypedNone::String)
+                Frame::None(TypedNone::String)
             } else if count == 1 {
                 list.pop_front().unwrap().into()
             } else {
@@ -88,7 +89,7 @@ impl Redis {
                 res.into()
             }
         } else {
-            RESP::None(TypedNone::String)
+            Frame::None(TypedNone::String)
         };
 
         Ok(res)
@@ -101,7 +102,7 @@ impl Redis {
     /// ```
     /// BLPOP key [key ...] timeout
     /// ```
-    pub fn blpop(&mut self, mut args: Command) -> std::io::Result<RESP> {
+    pub async fn blpop(&mut self, mut args: Args) -> Result {
         let err = || wrong_num_arguments("blpop");
 
         let key = args.pop_front().ok_or(err())?;
@@ -117,20 +118,20 @@ impl Redis {
         }
 
         while now.elapsed().as_secs_f64() < time_out {
-            let mut store = self.store.lock().unwrap();
+            let mut store = self.store.lock().await;
             let list = match store.kv.get_mut(&key) {
                 Some(l) => l.list_mut().unwrap(),
                 None => continue,
             };
             if let Some(v) = list.pop_front() {
-                let resp: RESP = vec![key.into(), v].into();
+                let resp: Frame = vec![key.into(), v].into();
                 return Ok(resp);
             }
             drop(store);
-            sleep(Duration::from_millis(1));
+            sleep(Duration::from_micros(10));
         }
 
-        Ok(RESP::None(TypedNone::Array))
+        Ok(Frame::None(TypedNone::Array))
     }
 
     /// Returns the specified elements of the list stored at key. The offsets start
@@ -143,15 +144,15 @@ impl Redis {
     /// ```
     /// LRANGE key start stop
     /// ```
-    pub fn lrange(&mut self, mut args: Command) -> std::io::Result<RESP> {
+    pub async fn lrange(&mut self, mut args: Args) -> Result {
         let err = || wrong_num_arguments("lrange");
 
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().await;
         let key = args.pop_front().ok_or(err())?;
         let list = store
             .kv
             .entry(key)
-            .or_insert(Value::new_list())
+            .or_insert(Value::List(VecDeque::new()))
             .list_mut()
             .unwrap();
         let n = list.len();
@@ -169,7 +170,7 @@ impl Redis {
         let end = 0.max(end) as usize;
         let end = n.min(end + 1);
 
-        let resp: RESP = list.range(start..end).cloned().collect::<Vec<_>>().into();
+        let resp: Frame = list.range(start..end).cloned().collect::<Vec<_>>().into();
 
         Ok(resp)
     }
@@ -180,16 +181,15 @@ impl Redis {
     /// ```
     /// LLEN key
     /// ```
-    pub fn llen(&mut self, mut args: Command) -> std::io::Result<RESP> {
-        let store = self.store.lock().unwrap();
+    pub async fn llen(&mut self, mut args: Args) -> Result {
+        let store = self.store.lock().await;
         let key = args.pop_front().ok_or(wrong_num_arguments("llen"))?;
 
-        let n: RESP = match store.kv.get(&key).and_then(|v| v.list()) {
+        let n = match store.kv.get(&key).and_then(|v| v.list()) {
             Some(l) => l.len(),
             None => 0,
-        }
-        .into();
+        };
 
-        Ok(n)
+        Ok(n.into())
     }
 }

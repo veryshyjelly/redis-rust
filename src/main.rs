@@ -1,18 +1,24 @@
-mod redis;
-mod resp;
-mod slave;
-
-use crate::redis::{Info, RedisStore, Role};
-use crate::slave::Slave;
-use rand::{Rng, distr::Alphanumeric};
-use redis::Redis;
+use crate::server::server::Server;
+use crate::store::{Info, Role, Store};
+use rand::Rng;
+use rand::distr::Alphanumeric;
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, TcpListener};
+use std::net::Ipv4Addr;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::Arc;
+use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 
-fn main() -> std::io::Result<()> {
+mod frame;
+mod parser;
+mod server;
+mod slave;
+mod store;
+
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let args: Vec<_> = std::env::args().collect();
     let port = if let Some(idx) = args.iter().position(|v| v == "--port") {
         args[idx + 1].parse().unwrap()
@@ -20,15 +26,16 @@ fn main() -> std::io::Result<()> {
         6379
     };
 
-    let redis_store = Arc::new(Mutex::new(RedisStore {
-        slaves: HashMap::new(),
+    let redis_store = Arc::new(Mutex::new(Store {
         kv: Default::default(),
         expiry_queue: Default::default(),
         expiry_time: Default::default(),
         info: Info::new_slave(port),
+        broadcast: None,
+        ack_received: 0,
     }));
 
-    let role = if let Some(idx) = args.iter().position(|v| v == "--replicaof") {
+    if let Some(idx) = args.iter().position(|v| v == "--replicaof") {
         let mut addr = args[idx + 1].split(" ");
         let ip_str = addr.next().unwrap();
         let ip = if ip_str == "localhost" {
@@ -38,43 +45,28 @@ fn main() -> std::io::Result<()> {
         };
         let port: u16 = addr.next().unwrap().parse().unwrap();
         let store = redis_store.clone();
-        thread::spawn(move || -> std::io::Result<()> {
-            let mut slave = Slave::new(ip, port, store)?;
-            slave.handle()
+        tokio::spawn(async move {
+            slave::handle(ip, port, store).await.unwrap();
         });
-        Role::Slave
     } else {
-        Role::Master
+        let (tx, _rx) = tokio::sync::broadcast::channel(64);
+        let _ = redis_store.lock().await.broadcast.insert(tx);
+        let master_id: String = rand::rng()
+            .sample_iter(&Alphanumeric)
+            .take(40)
+            .map(char::from)
+            .collect();
+        let info = Info::from_role(port, Role::Master, master_id.to_lowercase(), 0);
+        redis_store.lock().await.info = info;
     };
 
-    match role {
-        Role::Master => {
-            let master_id: String = rand::rng()
-                .sample_iter(&Alphanumeric)
-                .take(40)
-                .map(char::from)
-                .collect();
-            let info = Info::from_role(port, role, master_id.to_lowercase(), 0);
-            redis_store.lock().unwrap().info = info;
-        }
-        Role::Slave => {}
-    };
-
-    let listener = TcpListener::bind(format!("127.0.0.1:{port}"))?;
-
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                let store = redis_store.clone();
-                thread::spawn(|| -> std::io::Result<()> {
-                    Redis::new(Box::new(stream), store).handle()
-                });
-                println!("accepted new connection");
-            }
-            Err(e) => {
-                println!("error: {}", e);
-            }
-        }
+    let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+    while let Ok((stream, _)) = listener.accept().await {
+        let store = redis_store.clone();
+        tokio::spawn(async move {
+            Server::handle(stream, store, false).await;
+        });
+        println!("accepted new connection");
     }
 
     Ok(())

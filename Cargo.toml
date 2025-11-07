@@ -9,6 +9,7 @@ uuid = { version = "1.18.1", features = ["v4"] }
 rand = "0.10.0-rc.0"
 hex = "0.4.3"
 #anyhow = "1.0.59"                                   # error handling
-#bytes = "1.3.0"                                     # helps manage buffers
+bytes = "1.3.0"                                     # helps manage buffers
 #thiserror = "1.0.32"                                # error handling
-#tokio = { version = "1.23.0", features = ["full"] } # async networking
+tokio = { version = "1.23.0", features = ["full"] } # async networking
+atoi = "2.0.0"

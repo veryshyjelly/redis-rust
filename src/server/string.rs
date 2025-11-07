@@ -1,12 +1,36 @@
-use super::Command;
-use super::Redis;
-use super::errors::{out_of_range, syntax_error, wrong_num_arguments, wrong_type};
-use super::value::Value;
-use crate::resp::{RESP, TypedNone};
+use super::Args;
+use super::Result;
+use super::errors::*;
+use super::server::Server;
+use crate::frame::{Frame, TypedNone};
+use crate::store::{Store, Value};
 use std::ops::Add;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 
-impl Redis {
+impl Server {
+    /// Get the value of key. If the key does not exist the special value
+    /// nil is returned. An error is returned if the value stored at key
+    /// is not a string, because GET only handles string values.
+    /// ```
+    /// GET key
+    /// ```
+    pub async fn get(&mut self, mut args: Args) -> Result {
+        remove_expired(self.store.clone()).await;
+        let store = self.store.lock().await;
+
+        let key = args.pop_front().ok_or(wrong_num_arguments("get"))?;
+
+        let resp = if let Some(v) = store.kv.get(&key) {
+            v.string().ok_or(wrong_type())?.clone().into()
+        } else {
+            Frame::None(TypedNone::String)
+        };
+
+        Ok(resp)
+    }
+
     /// Set key to hold the string value. If key already holds a value,
     /// it is overwritten, regardless of its type. Any previous time to
     /// live associated with the key is discarded on successful SET operation.
@@ -14,9 +38,9 @@ impl Redis {
     /// SET key value [NX | XX] [GET] [EX seconds | PX milliseconds |
     ///   EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL]
     /// ```
-    pub fn set(&mut self, mut args: Command) -> std::io::Result<RESP> {
+    pub async fn set(&mut self, mut args: Args) -> Result {
         let err = || wrong_num_arguments("set");
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().await;
         let key = args.pop_front().ok_or(err())?;
         let value = args.pop_front().ok_or(wrong_num_arguments("set"))?;
         store.kv.insert(key.clone(), value.into());
@@ -43,27 +67,6 @@ impl Redis {
         Ok("OK".into())
     }
 
-    /// Get the value of key. If the key does not exist the special value
-    /// nil is returned. An error is returned if the value stored at key
-    /// is not a string, because GET only handles string values.
-    /// ```
-    /// GET key
-    /// ```
-    pub fn get(&mut self, mut args: Command) -> std::io::Result<RESP> {
-        self.remove_expired();
-        let store = self.store.lock().unwrap();
-
-        let key = args.pop_front().ok_or(wrong_num_arguments("get"))?;
-
-        let resp = if let Some(v) = store.kv.get(&key) {
-            v.string().ok_or(wrong_type())?.clone().into()
-        } else {
-            RESP::None(TypedNone::String)
-        };
-
-        Ok(resp)
-    }
-
     /// Increments the number stored at key by one. If the key does not exist,
     /// it is set to 0 before performing the operation. An error is returned if
     /// the key contains a value of the wrong type or contains a string that can
@@ -71,9 +74,9 @@ impl Redis {
     /// ```
     /// INCR key
     /// ```
-    pub fn incr(&mut self, mut args: Command) -> std::io::Result<RESP> {
+    pub async fn incr(&mut self, mut args: Args) -> Result {
         let key = args.pop_front().ok_or(wrong_num_arguments("incr"))?;
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().await;
         let val = store
             .kv
             .entry(key)
@@ -83,26 +86,25 @@ impl Redis {
         let mut result_value: isize = val.parse().ok().ok_or(out_of_range())?;
         result_value += 1;
 
-        // let v = .string().ok_or(out_of_range())?
         *val = result_value.to_string();
         Ok(result_value.into())
     }
+}
 
-    /// Removes expired keys from the kv store
-    /// keys are stored in heap wrt their expiration time
-    pub fn remove_expired(&mut self) {
-        let mut store = self.store.lock().unwrap();
-        while !store.expiry_queue.is_empty() {
-            let (t, key) = match store.expiry_queue.pop_first() {
-                Some(v) => v,
-                None => break,
-            };
-            if t > std::time::Instant::now() {
-                store.expiry_queue.insert(t, key);
-                break;
-            }
-            store.expiry_time.remove(&key);
-            store.kv.remove(&key);
+/// Removes expired keys from the kv store
+/// keys are stored in heap wrt their expiration time
+pub async fn remove_expired(store: Arc<Mutex<Store>>) {
+    let mut store = store.lock().await;
+    while !store.expiry_queue.is_empty() {
+        let (t, key) = match store.expiry_queue.pop_first() {
+            Some(v) => v,
+            None => break,
+        };
+        if t > std::time::Instant::now() {
+            store.expiry_queue.insert(t, key);
+            break;
         }
+        store.expiry_time.remove(&key);
+        store.kv.remove(&key);
     }
 }
