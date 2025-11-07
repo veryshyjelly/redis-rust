@@ -2,12 +2,12 @@ use super::{Info, Role};
 use std::fmt::{Display, Formatter};
 
 impl Info {
-    pub fn from_role(listening_port: u16, role: Role, master_id: String, offset: isize) -> Self {
+    pub fn from_role(listening_port: u16, role: Role, master_id: String, offset: usize) -> Self {
         let mut res = Info::default();
         res.listening_port = listening_port;
         res.role = role;
         res.master_id = master_id;
-        res.offset = offset;
+        res.recv_offset = offset;
         res
     }
 
@@ -16,7 +16,7 @@ impl Info {
         res.listening_port = listening_port;
         res.role = Role::Slave;
         res.master_id = "?".into();
-        res.offset = -1;
+        res.recv_offset = 0;
         res
     }
 }
@@ -28,7 +28,7 @@ impl Display for Info {
         writeln!(f, "# Replication")?;
         writeln!(f, "role:{}", self.role)?;
         writeln!(f, "master_replid:{}", self.master_id)?;
-        writeln!(f, "master_repl_offset:{}", self.offset)?;
+        writeln!(f, "master_repl_offset:{}", self.recv_offset)?;
         Ok(())
     }
 }

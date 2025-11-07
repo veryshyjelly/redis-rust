@@ -1,5 +1,6 @@
 use crate::server::server::Server;
 use crate::store::{Info, Role, Store};
+use bytes::BytesMut;
 use rand::Rng;
 use rand::distr::Alphanumeric;
 use std::collections::HashMap;
@@ -32,7 +33,8 @@ async fn main() -> Result<(), Error> {
         expiry_time: Default::default(),
         info: Info::new_slave(port),
         broadcast: None,
-        ack_received: 0,
+        get_ack_channel: None,
+        slave_offsets: HashMap::new(),
     }));
 
     if let Some(idx) = args.iter().position(|v| v == "--replicaof") {
@@ -51,6 +53,8 @@ async fn main() -> Result<(), Error> {
     } else {
         let (tx, _rx) = tokio::sync::broadcast::channel(64);
         let _ = redis_store.lock().await.broadcast.insert(tx);
+        let (tx, _rx) = tokio::sync::broadcast::channel(64);
+        let _ = redis_store.lock().await.get_ack_channel.insert(tx);
         let master_id: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(40)
@@ -64,7 +68,7 @@ async fn main() -> Result<(), Error> {
     while let Ok((stream, _)) = listener.accept().await {
         let store = redis_store.clone();
         tokio::spawn(async move {
-            Server::handle(stream, store, false).await;
+            Server::handle(store, stream, BytesMut::with_capacity(4 * 1024), 0).await;
         });
         println!("accepted new connection");
     }

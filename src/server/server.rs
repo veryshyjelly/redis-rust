@@ -10,12 +10,15 @@ use crate::store::Store;
 use bytes::BytesMut;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::thread::sleep;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc};
 
 pub struct Server {
-    pub is_slave: bool,
+    pub slave_id: usize,
+    pub asked_offset: usize,
     pub store: Arc<Mutex<Store>>,
     pub output: mpsc::Sender<Frame>,
     pub transaction: VecDeque<Args>,
@@ -29,9 +32,10 @@ pub struct SlaveConfig {
 }
 
 impl Server {
-    pub fn new(store: Arc<Mutex<Store>>, output: mpsc::Sender<Frame>, is_slave: bool) -> Self {
+    pub fn new(store: Arc<Mutex<Store>>, output: mpsc::Sender<Frame>, slave_id: usize) -> Self {
         Server {
-            is_slave,
+            asked_offset: 0,
+            slave_id,
             store,
             output,
             transaction: VecDeque::new(),
@@ -40,17 +44,19 @@ impl Server {
         }
     }
 
-    pub async fn handle(stream: TcpStream, store: Arc<Mutex<Store>>, is_slave: bool) {
+    pub async fn handle(
+        store: Arc<Mutex<Store>>,
+        stream: TcpStream,
+        buffer: BytesMut,
+        slave_id: usize,
+    ) {
         let (reader, mut writer) = stream.into_split();
         let (tx, mut rx): (mpsc::Sender<Frame>, mpsc::Receiver<Frame>) = mpsc::channel(64);
-        tokio::spawn(async move {
-            let parser = Parser::new(Box::new(reader));
-            let mut server = Server::new(store, tx, is_slave);
-            server.execution_thread(parser).await
-        });
+
         tokio::spawn(async move {
             loop {
                 if let Some(v) = rx.recv().await {
+                    // println!("sending {v:?} to connection");
                     let mut b = BytesMut::new();
                     v.encode_bytes(&mut b);
                     if writer.write_all(b.freeze().as_ref()).await.is_err() {
@@ -61,6 +67,14 @@ impl Server {
                 }
             }
         });
+
+        sleep(Duration::from_millis(1));
+
+        tokio::spawn(async move {
+            let parser = Parser::new(Box::new(reader), buffer);
+            let mut server = Server::new(store, tx, slave_id);
+            server.execution_thread(parser).await
+        });
     }
 
     pub async fn execution_thread(&mut self, mut parser: Parser) -> Result<(), Error> {
@@ -70,6 +84,30 @@ impl Server {
                 None => break,
             };
 
+            if self.slave_id == 0 {
+                let command = command.clone();
+                let method = command
+                    .clone()
+                    .array()
+                    .ok_or("invalid command format!")?
+                    .remove(0)
+                    .string()
+                    .unwrap_or("ping".into());
+                if is_write_command(&method) {
+                    let _ = self
+                        .store
+                        .lock()
+                        .await
+                        .broadcast
+                        .clone()
+                        .expect("broadcast not set properly")
+                        .send(command.clone());
+
+                    println!("increasing send_offset in write command");
+                    self.store.lock().await.info.send_offset += parser.parsed_bytes;
+                }
+            }
+
             let args: Option<VecDeque<String>> = command
                 .array()
                 .ok_or("invalid command format!")?
@@ -78,13 +116,18 @@ impl Server {
                 .collect();
             let args = args.ok_or("invalid command format!")?;
 
+            #[cfg(debug_assertions)]
+            println!("command: {args:?}");
+
             let response = if self.in_transaction {
                 self.transaction(args).await
             } else {
                 self.execute(args).await
             };
 
-            if !self.is_slave {
+            self.store.lock().await.info.recv_offset += parser.parsed_bytes;
+
+            if self.slave_id == 0 {
                 let _ = match response {
                     Ok(v) => self.output.send(v).await,
                     Err(e) => {
@@ -99,7 +142,7 @@ impl Server {
 
     pub async fn execute(&mut self, mut args: Args) -> Result<Frame, Error> {
         let method = args.pop_front().ok_or(syntax_error())?;
-        match method.as_str() {
+        match method.to_lowercase().as_str() {
             // Ping pong commands
             "ping" => self.ping(args),
             "echo" => self.echo(args),
@@ -148,6 +191,7 @@ impl Server {
             .get(&key)
             .map(|v| v.redis_type())
             .unwrap_or("none".into())
+            .as_str()
             .into();
         Ok(resp)
     }
@@ -181,5 +225,12 @@ impl Server {
 
     fn invalid(&mut self, _: Args) -> Result<Frame, Error> {
         Ok(Frame::None(TypedNone::Nil))
+    }
+}
+
+fn is_write_command(cmd: &str) -> bool {
+    match cmd.to_lowercase().as_str() {
+        "set" | "del" => true,
+        _ => false,
     }
 }

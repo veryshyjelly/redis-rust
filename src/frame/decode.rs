@@ -115,7 +115,10 @@ impl Frame {
                     Ok(Frame::Push(out))
                 }
             }
-            _ => unimplemented!(),
+            v => {
+                println!("got {v} as starting byte how can i?");
+                unimplemented!()
+            }
         }
     }
 }
@@ -173,7 +176,7 @@ pub fn get_decimal(src: &mut Cursor<&[u8]>) -> Result<isize, Error> {
     atoi::atoi(line).ok_or_else(|| "protocol error; invalid frame format".into())
 }
 
-fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], Error> {
+pub fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], Error> {
     let start = src.position() as usize;
     // Scan to the second to last byte
     let end = src.get_ref().len() - 1;

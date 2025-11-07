@@ -9,8 +9,9 @@ use tokio::sync::broadcast;
 pub struct Store {
     pub info: Info,
     pub broadcast: Option<broadcast::Sender<Frame>>,
+    pub get_ack_channel: Option<broadcast::Sender<Frame>>,
     pub kv: HashMap<String, Value>,
-    pub ack_received: usize,
+    pub slave_offsets: HashMap<usize, usize>,
     pub expiry_queue: BTreeMap<std::time::Instant, String>,
     pub expiry_time: HashMap<String, std::time::Instant>,
 }
@@ -41,7 +42,8 @@ pub struct StreamEntryID {
 pub struct Info {
     pub role: Role,
     pub master_id: String,
-    pub offset: isize,
+    pub send_offset: usize,
+    pub recv_offset: usize,
     pub connected_client: usize,
     pub listening_port: u16,
 }

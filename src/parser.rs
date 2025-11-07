@@ -6,13 +6,15 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 pub struct Parser {
     input: Box<dyn AsyncRead + Unpin + Send>,
     buffer: BytesMut,
+    pub parsed_bytes: usize,
 }
 
 impl Parser {
-    pub fn new(input: Box<dyn AsyncRead + Unpin + Send>) -> Self {
+    pub fn new(input: Box<dyn AsyncRead + Unpin + Send>, buffer: BytesMut) -> Self {
         Parser {
             input,
-            buffer: BytesMut::with_capacity(4 * 1024),
+            buffer,
+            parsed_bytes: 0,
         }
     }
 
@@ -58,7 +60,13 @@ impl Parser {
         use crate::frame::Error::Incomplete;
         let mut buf = Cursor::new(&self.buffer[..]);
         match Frame::parse(&mut buf) {
-            Ok(v) => Ok(Some(v)),
+            Ok(v) => {
+                let parsed = buf.position() as usize;
+                self.buffer.copy_within(parsed.., 0);
+                self.buffer.truncate(self.buffer.len() - parsed);
+                self.parsed_bytes = parsed;
+                Ok(Some(v))
+            }
             Err(Incomplete) => Ok(None),
             Err(e) => Err(e.into()),
         }
