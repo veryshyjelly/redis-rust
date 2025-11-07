@@ -104,6 +104,7 @@ impl<'a> RDBParser<'a> {
         match length {
             Ok(length) => {
                 let position = self.bytes.position() as usize;
+                let length = length.min(self.bytes.get_ref().len() - position);
                 let data = String::from_utf8_lossy(&self.bytes.get_ref()[position..position+length]);
                 self.bytes.advance(length);
                 data.into()

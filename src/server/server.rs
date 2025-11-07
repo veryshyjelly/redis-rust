@@ -83,15 +83,21 @@ impl Server {
                 None => break,
             };
 
+            let method = command
+                .clone()
+                .array()
+                .ok_or("invalid command format!")?
+                .remove(0)
+                .string()
+                .unwrap_or("ping".into());
+            
+            if self.subscription_count > 0 && !subscriber_mode_command(&method) {
+                let resp = Frame::SimpleError(format!("ERR Can't execute '{method}': only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context").into());
+                self.output.send(resp).await?;
+                continue
+            }
+            
             if self.slave_id == 0 {
-                let command = command.clone();
-                let method = command
-                    .clone()
-                    .array()
-                    .ok_or("invalid command format!")?
-                    .remove(0)
-                    .string()
-                    .unwrap_or("ping".into());
                 if is_write_command(&method) {
                     let _ = self
                         .store
@@ -117,7 +123,7 @@ impl Server {
 
             #[cfg(debug_assertions)]
             println!("command: {args:?}");
-
+            
             let mut response = if self.in_transaction {
                 self.transaction(args).await
             } else {
@@ -246,6 +252,13 @@ impl Server {
 fn is_write_command(cmd: &str) -> bool {
     match cmd.to_lowercase().as_str() {
         "set" | "del" => true,
+        _ => false,
+    }
+}
+
+fn subscriber_mode_command(cmd: &str) -> bool {
+    match cmd.to_lowercase().as_str() {
+        "subscribe" | "unsubscribe" | "psubscribe" | "punsubscribe" | "ping" | "quit" => true,
         _ => false,
     }
 }
