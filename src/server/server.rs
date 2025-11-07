@@ -137,7 +137,8 @@ impl Server {
                     if r.is_array() {
                         r 
                     } else {
-                        vec![r, "".to_string().into()].into()
+                        let pong: Frame = "pong".to_string().into();
+                        vec![pong, "".to_string().into()].into()
                     }
                 });
             } 
