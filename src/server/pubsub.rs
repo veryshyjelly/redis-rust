@@ -30,6 +30,16 @@ impl Server {
         Ok(vec![sub, key.into(), self.subscription_count.into()].into())
     }
 
+    pub async fn publish(&mut self, mut args: Args) -> Result<Frame, Error> {
+        let key = args.pop_front().ok_or(wrong_num_arguments("subscribe"))?;
+        let msg = args.pop_front().ok_or(wrong_num_arguments("subscribe"))?;
+        if let Some(channel) = self.store.lock().await.channels.get(&key) {
+            channel.send(vec!["message".to_string(), key, msg].into())?;
+            Ok(channel.receiver_count().into())
+        } else {
+            Ok(0usize.into())
+        }
+    }
 
     pub async fn unsubscribe(&mut self, mut args: Args) -> Result<Frame, Error> {
         todo!()

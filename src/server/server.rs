@@ -195,6 +195,7 @@ impl Server {
             // pubsub
             "subscribe" => self.subscribe(args).await,
             "unsubscribe" => self.unsubscribe(args).await,
+            "publish" => self.publish(args).await,
             _ => self.invalid(args),
         }
     }
