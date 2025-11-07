@@ -2,23 +2,23 @@ use super::{Info, Role};
 use std::fmt::{Display, Formatter};
 
 impl Info {
-    pub fn from_role(listening_port: u16, role: Role, master_id: String, offset: usize) -> Self {
-        let mut res = Info::default();
-        res.listening_port = listening_port;
-        res.role = role;
-        res.master_id = master_id;
-        res.recv_offset = offset;
-        res
-    }
+    // pub fn from_role(listening_port: u16, role: Role, master_id: String, offset: usize) -> Self {
+    //     let mut res = Info::default();
+    //     res.listening_port = listening_port;
+    //     res.role = role;
+    //     res.master_id = master_id;
+    //     res.recv_offset = offset;
+    //     res
+    // }
 
-    pub fn new_slave(listening_port: u16) -> Self {
-        let mut res = Info::default();
-        res.listening_port = listening_port;
-        res.role = Role::Slave;
-        res.master_id = "?".into();
-        res.recv_offset = 0;
-        res
-    }
+    // pub fn new_slave(listening_port: u16) -> Self {
+    //     let mut res = Info::default();
+    //     res.listening_port = listening_port;
+    //     res.role = Role::Slave;
+    //     res.master_id = "?".into();
+    //     res.recv_offset = 0;
+    //     res
+    // }
 }
 
 impl Display for Info {

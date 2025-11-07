@@ -47,6 +47,8 @@ pub struct Info {
     pub recv_offset: usize,
     pub connected_client: usize,
     pub listening_port: u16,
+    pub dir: String,
+    pub db_filename: String,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]

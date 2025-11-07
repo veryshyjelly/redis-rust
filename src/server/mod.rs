@@ -9,6 +9,7 @@ pub mod server;
 mod stream;
 mod string;
 mod transaction;
+mod persistence;
 
 type Result = std::result::Result<Frame, Error>;
 

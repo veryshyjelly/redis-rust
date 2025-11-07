@@ -170,6 +170,8 @@ impl Server {
             "replconf" => self.replconf(args).await,
             "psync" => self.psync(args).await,
             "wait" => self.wait(args).await,
+            // config
+            "config" => self.config(args).await,
             _ => self.invalid(args),
         }
     }

@@ -18,20 +18,30 @@ mod store;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
+fn get_arg_value(args: &[String], key: &str) -> Option<String> {
+    args.iter()
+        .position(|v| v == key)
+        .and_then(|idx| args.get(idx + 1))
+        .cloned()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let args: Vec<_> = std::env::args().collect();
-    let port = if let Some(idx) = args.iter().position(|v| v == "--port") {
-        args[idx + 1].parse().unwrap()
-    } else {
-        6379
-    };
+    
+    let mut info = Info::default();
+    let port = get_arg_value(&args, "--port")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(6379);
+    info.listening_port = port;
+    info.dir = get_arg_value(&args, "--dir").unwrap_or_default();
+    info.db_filename = get_arg_value(&args, "--dbfilename").unwrap_or_default();
 
     let redis_store = Arc::new(Mutex::new(Store {
         kv: Default::default(),
         expiry_queue: Default::default(),
         expiry_time: Default::default(),
-        info: Info::new_slave(port),
+        info,
         broadcast: None,
         get_ack_channel: None,
         slave_offsets: HashMap::new(),
@@ -47,6 +57,8 @@ async fn main() -> Result<(), Error> {
             Ipv4Addr::from_str(ip_str).unwrap()
         };
         let port: u16 = addr.next().unwrap().parse().unwrap();
+        redis_store.lock().await.info.master_id = "?".into();
+        redis_store.lock().await.info.role = Role::Slave;
         let store = redis_store.clone();
         tokio::spawn(async move {
             slave::handle(ip, port, store).await.unwrap();
@@ -63,8 +75,9 @@ async fn main() -> Result<(), Error> {
             .take(40)
             .map(char::from)
             .collect();
-        let info = Info::from_role(port, Role::Master, master_id.to_lowercase(), 0);
-        redis_store.lock().await.info = info;
+        let mut store = redis_store.lock().await;
+        store.info.role = Role::Master;
+        store.info.master_id = master_id.to_lowercase();
     };
 
     let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;

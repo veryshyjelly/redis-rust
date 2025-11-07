@@ -14,9 +14,9 @@ use tokio::sync::Mutex;
 
 pub async fn handle(addr: Ipv4Addr, port: u16, store: Arc<Mutex<Store>>) -> Result<(), Error> {
     let mut tcp = TcpStream::connect(SocketAddrV4::new(addr, port)).await?;
-    ping(&mut tcp).await.unwrap();
-    replconf(store.clone(), &mut tcp).await.unwrap();
-    let buffer = psync(store.clone(), &mut tcp).await.unwrap();
+    ping(&mut tcp).await?;
+    replconf(store.clone(), &mut tcp).await?;
+    let buffer = psync(store.clone(), &mut tcp).await?;
     Server::handle(store, tcp, buffer, rand::random_range(1..usize::MAX)).await;
     Ok(())
 }
