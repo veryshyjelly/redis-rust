@@ -84,11 +84,6 @@ impl<'a> RDBParser<'a> {
         (key, value)
     }
 
-    fn parse_db_fields(&mut self) {
-        let idx = self.bytes.get_u8();
-        // todo!()
-    }
-
     fn parse_key_value(&mut self) -> (String, Value) {
         let value_type = self.bytes.get_u8();
         let key = self.parse_encoded_string();

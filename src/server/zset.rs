@@ -157,7 +157,19 @@ impl Server {
     /// ZREM key member [member ...]
     /// ```
     pub async fn zrem(&mut self, mut args: Args) -> Result {
-        todo!()
+        let err = || wrong_num_arguments("zrem");
+        let mut store = self.store.lock().await;
+        let key = args.pop_front().ok_or(err())?;
+        let member = args.pop_front().ok_or(err())?;
+        let res = if let Some(v) = store.kv.get_mut(&key)
+            && let Some(score) = v.zset_mut().ok_or(wrong_type())?.scores.remove(&member)
+        {
+            v.zset_mut().ok_or(wrong_type())?.ordered.remove(&(score, member));
+            1usize
+        } else {
+            0
+        };
+        Ok(res.into())
     }
 
     /// Returns the score of member in the sorted set at key.
