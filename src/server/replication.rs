@@ -1,6 +1,7 @@
 use super::Result;
 use super::errors::*;
 use super::server::{Server, SlaveConfig};
+use crate::Store;
 use crate::frame::encode::AsBytes;
 use crate::frame::{Frame, TypedNone};
 use crate::server::Args;
@@ -8,6 +9,9 @@ use bytes::{Bytes, BytesMut};
 use rand::random_range;
 use std::mem;
 use std::ops::AddAssign;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::sync::{broadcast, mpsc};
 
 const EMPTY_RDB: &str = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
 
@@ -116,33 +120,40 @@ impl Server {
 
         let store = self.store.clone();
 
-        tokio::spawn(async move {
-            loop {
-                if let Ok(v) = ack_reader.recv().await {
-                    // println!("got instructions to send get ack");
-                    let mut store = store.lock().await;
-                    let asked_offset = *store.slave_asked_offsets.get(&slave_id).unwrap();
-                    let send_offset = store.info.send_offset;
-                    if send_offset > asked_offset {
-                        println!("asked for ack but don't know if she got the message :(");
-                        if let Err(e) = px.send(v).await {
-                            println!("stopping sending because {e}");
-                            break;
-                        }
-                    } else {
-                        // println!("but send offset was {send_offset} and ask_offset was {asked_offset}");
-                    }
-                    store
-                        .slave_asked_offsets
-                        .insert(slave_id, send_offset)
-                        .unwrap();
-                } else {
-                    break;
-                }
-            }
-        });
+        tokio::spawn(async move { Server::get_ack(store, slave_id, ack_reader, px).await });
 
         Ok("OK".into())
+    }
+
+    pub async fn get_ack(
+        store: Arc<Mutex<Store>>,
+        slave_id: usize,
+        mut ack: broadcast::Receiver<Frame>,
+        sender: mpsc::Sender<Frame>,
+    ) {
+        loop {
+            if let Ok(v) = ack.recv().await {
+                // println!("got instructions to send get ack");
+                let mut store = store.lock().await;
+                let asked_offset = *store.slave_asked_offsets.get(&slave_id).unwrap();
+                let send_offset = store.info.send_offset;
+                if send_offset > asked_offset {
+                    println!("asked for ack but don't know if she got the message :(");
+                    if let Err(e) = sender.send(v).await {
+                        println!("stopping sending because {e}");
+                        break;
+                    }
+                } else {
+                    // println!("but send offset was {send_offset} and ask_offset was {asked_offset}");
+                }
+                store
+                    .slave_asked_offsets
+                    .insert(slave_id, send_offset)
+                    .unwrap();
+            } else {
+                break;
+            }
+        }
     }
 
     pub async fn wait(&mut self, mut args: Args) -> Result {

@@ -3,7 +3,8 @@ mod stream;
 mod value;
 
 use crate::frame::Frame;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use ordered_float::OrderedFloat;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use tokio::sync::broadcast;
 
 pub struct Store {
@@ -22,7 +23,7 @@ pub enum Value {
     String(String),
     List(VecDeque<Frame>),
     Set(HashSet<Frame>),
-    ZSet(BTreeSet<Frame>),
+    ZSet(BTreeMap<OrderedFloat<f64>, Frame>),
     Hash,
     Stream(Vec<StreamEntry>),
     VectorSet,

@@ -1,10 +1,7 @@
 use super::Args;
 use super::errors::*;
 use crate::Error;
-use crate::frame::{
-    encode::AsBytes,
-    {Frame, TypedNone},
-};
+use crate::frame::{Frame, encode::AsBytes};
 use crate::parser::Parser;
 use crate::store::Store;
 use bytes::BytesMut;
@@ -16,19 +13,36 @@ use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 pub struct Server {
-    pub slave_id: usize,
-    pub subscription_count: usize,
-    pub store: Arc<Mutex<Store>>,
-    pub output: mpsc::Sender<Frame>,
-    pub transaction: VecDeque<Args>,
-    pub unsubscribe: HashMap<String, oneshot::Sender<bool>>,
-    pub slave_config: Option<SlaveConfig>,
+    pub(crate) slave_id: usize,
+    pub(crate) subscription_count: usize,
+    pub(crate) store: Arc<Mutex<Store>>,
+    pub(crate) output: mpsc::Sender<Frame>,
+    pub(crate) transaction: VecDeque<Args>,
+    pub(crate) unsubscribe: HashMap<String, oneshot::Sender<bool>>,
+    pub(crate) slave_config: Option<SlaveConfig>,
     pub(crate) in_transaction: bool,
 }
 
 pub struct SlaveConfig {
     pub port: u16,
     pub capabilities: Vec<String>,
+}
+
+macro_rules! dispatch {
+    ($self:ident, $method:expr, $args:expr, {
+        $($cmd:ident),* $(,)?
+        ; $($custom:literal => $expr:expr),* $(,)?
+    }) => {{
+        match $method.to_lowercase().as_str() {
+            $(
+                stringify!($cmd) => $self.$cmd($args).await,
+            )*
+            $(
+                $custom => $expr,
+            )*
+            _ => $self.invalid($args).await,
+        }
+    }};
 }
 
 impl Server {
@@ -78,7 +92,7 @@ impl Server {
         });
     }
 
-    pub async fn execution_thread(&mut self, mut parser: Parser) -> Result<(), Error> {
+    async fn execution_thread(&mut self, mut parser: Parser) -> Result<(), Error> {
         loop {
             let command = match parser.read_frame().await? {
                 Some(v) => v,
@@ -92,13 +106,13 @@ impl Server {
                 .remove(0)
                 .string()
                 .unwrap_or("ping".into());
-            
+
             if self.subscription_count > 0 && !subscriber_mode_command(&method) {
                 let resp = Frame::SimpleError(format!("ERR Can't execute '{method}': only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context").into());
                 self.output.send(resp).await?;
-                continue
+                continue;
             }
-            
+
             if self.slave_id == 0 {
                 if is_write_command(&method) {
                     let _ = self
@@ -125,7 +139,7 @@ impl Server {
 
             #[cfg(debug_assertions)]
             println!("command: {args:?}");
-            
+
             let mut response = if self.in_transaction {
                 self.transaction(args).await
             } else {
@@ -133,18 +147,18 @@ impl Server {
             };
 
             self.store.lock().await.info.recv_offset += parser.parsed_bytes;
-            
+
             if self.subscription_count > 0 {
                 response = response.map(|r| {
                     if r.is_array() {
-                        r 
+                        r
                     } else {
                         let pong: Frame = "pong".to_string().into();
                         vec![pong, "".to_string().into()].into()
                     }
                 });
-            } 
-            
+            }
+
             if self.slave_id == 0 {
                 let _ = match response {
                     Ok(v) => self.output.send(v).await,
@@ -158,98 +172,31 @@ impl Server {
         Ok(())
     }
 
-    pub async fn execute(&mut self, mut args: Args) -> Result<Frame, Error> {
+    pub(crate) async fn execute(&mut self, mut args: Args) -> Result<Frame, Error> {
         let method = args.pop_front().ok_or(syntax_error())?;
-        match method.to_lowercase().as_str() {
+        dispatch!(self, method, args, {
             // Ping pong commands
-            "ping" => self.ping(args),
-            "echo" => self.echo(args),
-            "info" => self.info(args).await,
-            "type" => self.redis_type(args).await,
+            ping, echo, info,
             // string operations
-            "set" => self.set(args).await,
-            "get" => self.get(args).await,
-            "incr" => self.incr(args).await,
+            set, get, incr,
             // list operations
-            "rpush" => self.rpush(args).await,
-            "lpush" => self.lpush(args).await,
-            "lpop" => self.lpop(args).await,
-            "blpop" => self.blpop(args).await,
-            "lrange" => self.lrange(args).await,
-            "llen" => self.llen(args).await,
-            // stream operations
-            "xadd" => self.xadd(args).await,
-            "xdel" => self.xdel(args).await,
-            "xlen" => self.xlen(args).await,
-            "xrange" => self.xrange(args).await,
-            "xread" => self.xread(args).await,
+            rpush, lpush, lpop, blpop, lrange, llen,
+            // sream operations
+            xadd, xdel, xlen, xrange, xread,
             // transaction operations
-            "multi" => self.multi(args),
+            multi,
+            // replication operations
+            replconf, psync, wait,
+            // config
+            config, keys,
+            // pubsub
+            subscribe, unsubscribe, publish,
+            // zset
+            zadd, zcard, zcount, zrank, zrange, zrem, zscore ;
+            "type" => self.redis_type(args).await,
             "exec" => Err(make_io_error("ERR EXEC without MULTI").into()),
             "discard" => Err(make_io_error("ERR DISCARD without MULTI").into()),
-            // replication operations
-            "replconf" => self.replconf(args).await,
-            "psync" => self.psync(args).await,
-            "wait" => self.wait(args).await,
-            // config
-            "config" => self.config(args).await,
-            "keys" => self.keys(args).await,
-            // pubsub
-            "subscribe" => self.subscribe(args).await,
-            "unsubscribe" => self.unsubscribe(args).await,
-            "publish" => self.publish(args).await,
-            _ => self.invalid(args),
-        }
-    }
-
-    /// Returns the string representation of the type of the value stored at key.
-    /// The different types that can be returned are:
-    /// string, list, set, zset, hash, stream, and vectorset.
-    /// ```
-    /// TYPE key
-    /// ```
-    async fn redis_type(&mut self, mut args: Args) -> Result<Frame, Error> {
-        let key = args.pop_front().ok_or(wrong_num_arguments("type"))?;
-        let store = self.store.lock().await;
-        let resp = store
-            .kv
-            .get(&key)
-            .map(|v| v.redis_type())
-            .unwrap_or("none".into())
-            .as_str()
-            .into();
-        Ok(resp)
-    }
-
-    /// The INFO command returns information and statistics about the server in a format
-    /// that is simple to parse by computers and easy to read by humans.
-    /// ```
-    /// INFO [section [section ...]]
-    /// ```
-    pub async fn info(&mut self, _: Args) -> Result<Frame, Error> {
-        Ok(Frame::BulkString(
-            self.store.lock().await.info.to_string().into(),
-        ))
-    }
-
-    /// Returns message.
-    /// ```
-    /// ECHO message
-    /// ```
-    fn echo(&mut self, mut args: Args) -> Result<Frame, Error> {
-        Ok(args.pop_front().ok_or(wrong_num_arguments("echo"))?.into())
-    }
-
-    /// Returns PONG if no argument is provided, otherwise return a copy of the argument as a bulk.
-    /// ```
-    /// PING [message]
-    /// ```
-    fn ping(&mut self, _: Args) -> Result<Frame, Error> {
-        Ok("PONG".into())
-    }
-
-    fn invalid(&mut self, _: Args) -> Result<Frame, Error> {
-        Ok(Frame::None(TypedNone::Nil))
+        })
     }
 }
 

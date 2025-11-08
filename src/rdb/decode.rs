@@ -13,7 +13,7 @@ pub struct RDBParser<'a> {
 impl<'a> RDBParser<'a> {
     pub fn parse_file(path: PathBuf) -> Result<RDB, Error> {
         let data = Bytes::from(std::fs::read(path)?);
-        
+
         let mut parser = RDBParser {
             bytes: Cursor::new(data.as_ref()),
         };
@@ -21,7 +21,7 @@ impl<'a> RDBParser<'a> {
         rdb_file.header = parser.parse_header();
         let mut key_len = 0;
         let mut expiry_len = 0;
-        
+
         while parser.bytes.has_remaining() {
             let section = parser.bytes.get_u8();
             match section {
@@ -60,8 +60,8 @@ impl<'a> RDBParser<'a> {
                             0x00 => {
                                 let (k, v) = parser.parse_key_value();
                                 rdb_file.database.insert(k.clone(), v);
-                            } 
-                            _ => panic!("invalid or unimplemented") 
+                            }
+                            _ => panic!("invalid or unimplemented"),
                         }
                     }
                 }
@@ -105,7 +105,8 @@ impl<'a> RDBParser<'a> {
             Ok(length) => {
                 let position = self.bytes.position() as usize;
                 let length = length.min(self.bytes.get_ref().len() - position);
-                let data = String::from_utf8_lossy(&self.bytes.get_ref()[position..position+length]);
+                let data =
+                    String::from_utf8_lossy(&self.bytes.get_ref()[position..position + length]);
                 self.bytes.advance(length);
                 data.into()
             }

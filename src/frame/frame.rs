@@ -32,11 +32,11 @@ impl Frame {
     impl_getter!(bulk_string, BulkString, bytes::Bytes);
     impl_getter!(bulk_error, BulkError, bytes::Bytes);
     impl_getter!(set, Set, HashSet<String>);
-    
+
     pub fn is_array(&self) -> bool {
         match self {
             Frame::Array(_) => true,
-            _ => false
+            _ => false,
         }
     }
 

@@ -5,7 +5,7 @@ use super::server::Server;
 use crate::frame::Frame;
 
 impl Server {
-    pub fn multi(&mut self, _: Args) -> Result {
+    pub async fn multi(&mut self, _: Args) -> Result {
         self.in_transaction = true;
         Ok("OK".into())
     }
