@@ -99,10 +99,10 @@ impl Server {
                 self.authenticated = true;
                 Ok("OK".into())
             } else {
-                Err("invalid username/password pair".into())
+                Err("WRONGPASS invalid username-password pair or user is disabled.".into())
             }
         } else {
-            Err("invalid username/password pair".into())
+            Err("WRONGPASS invalid username-password pair or user is disabled.".into())
         }
     }
 }
