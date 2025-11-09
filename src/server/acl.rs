@@ -92,9 +92,12 @@ impl Server {
     pub async fn auth(&mut self, mut args: Args) -> Result {
         let username = args.pop_front().ok_or(wrong_num_arguments("getuser"))?;
         if let Some(user) = self.store.lock().await.users.get(&username) {
+            let mut hasher = Sha256::default();
             let password = args.pop_front().ok_or(wrong_num_arguments("getuser"))?;
+            hasher.update(password.as_bytes());
+            let x = hasher.finalize_fixed();
             let passwords = user.get("passwords").unwrap();
-            if passwords.contains(&password) {
+            if passwords.contains(&format!("{:x}", x)) {
                 self.user = username;
                 self.authenticated = true;
                 Ok("OK".into())
