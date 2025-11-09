@@ -1,8 +1,9 @@
-use crate::Error;
 use crate::frame::Frame;
+use crate::Error;
 use std::collections::VecDeque;
 
 mod errors;
+mod geospatial;
 mod list;
 mod misc;
 mod persistence;

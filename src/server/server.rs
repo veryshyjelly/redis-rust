@@ -192,7 +192,9 @@ impl Server {
             // pubsub
             subscribe, unsubscribe, publish,
             // zset
-            zadd, zcard, zcount, zrank, zrange, zrem, zscore ;
+            zadd, zcard, zcount, zrank, zrange, zrem, zscore,
+            // geospatial
+            geoadd, geopos, geodist;
             "type" => self.redis_type(args).await,
             "exec" => Err(make_io_error("ERR EXEC without MULTI").into()),
             "discard" => Err(make_io_error("ERR DISCARD without MULTI").into()),
