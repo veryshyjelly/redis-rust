@@ -16,13 +16,13 @@ const LATITUDE_RANGE: f64 = MAX_LATITUDE - MIN_LATITUDE;
 const LONGITUDE_RANGE: f64 = MAX_LONGITUDE - MIN_LONGITUDE;
 
 impl Server {
-    /// Adds the specified geospatial items (longitude, latitude, name) to the specified key. 
-    /// Data is stored into the key as a sorted set, in a way that makes it possible to query 
+    /// Adds the specified geospatial items (longitude, latitude, name) to the specified key.
+    /// Data is stored into the key as a sorted set, in a way that makes it possible to query
     /// the items with the GEOSEARCH command.
     ///
-    /// The command takes arguments in the standard format x,y so the longitude must be specified 
-    /// before the latitude. There are limits to the coordinates that can be indexed: 
-    /// areas very near to the poles are not indexable. 
+    /// The command takes arguments in the standard format x,y so the longitude must be specified
+    /// before the latitude. There are limits to the coordinates that can be indexed:
+    /// areas very near to the poles are not indexable.
     /// ```
     /// GEOADD key [NX | XX] [CH] longitude latitude member [longitude latitude member ...]
     /// ```
@@ -39,13 +39,13 @@ impl Server {
         while !args.is_empty() {
             let longitude: f64 = args.pop_front().ok_or(syntax_error())?.parse().map_err(|_| syntax_error())?;
             let latitude: f64 = args.pop_front().ok_or(syntax_error())?.parse().map_err(|_| syntax_error())?;
-            
+
             if longitude < MIN_LONGITUDE || longitude > MAX_LONGITUDE || latitude < MIN_LATITUDE || latitude > MAX_LATITUDE {
                 return Err(format!("ERR invalid longitude,latitude pair {},{}", longitude, latitude).into())
             }
-            
+
             let key = encode(latitude, longitude);
-            
+
             let key = OrderedFloat::from(key as f64);
             let value = args.pop_front().ok_or(syntax_error())?;
             if let Some(prev_score) = set.scores.remove(&value) {
@@ -58,17 +58,17 @@ impl Server {
         }
         Ok(res.into())
     }
-    
-    /// Return the positions (longitude,latitude) of all the specified members of the geospatial 
+
+    /// Return the positions (longitude,latitude) of all the specified members of the geospatial
     /// index represented by the sorted set at key.
-    /// 
-    /// Given a sorted set representing a geospatial index, populated using the GEOADD command, 
-    /// it is often useful to obtain back the coordinates of specified members. 
-    /// When the geospatial index is populated via GEOADD the coordinates are converted into a 
-    /// 52 bit geohash, so the coordinates returned may not be exactly the ones used in order 
+    ///
+    /// Given a sorted set representing a geospatial index, populated using the GEOADD command,
+    /// it is often useful to obtain back the coordinates of specified members.
+    /// When the geospatial index is populated via GEOADD the coordinates are converted into a
+    /// 52 bit geohash, so the coordinates returned may not be exactly the ones used in order
     /// to add the elements, but small errors may be introduced.
-    // 
-    /// The command can accept a variable number of arguments so it always returns an array of 
+    //
+    /// The command can accept a variable number of arguments so it always returns an array of
     /// positions even when a single element is specified.
     /// ```
     /// GEOPOS key [member [member ...]]
@@ -99,12 +99,12 @@ impl Server {
         }
         Ok(response.into())
     }
-    
+
     /// Return the distance between two members in the geospatial index represented by the sorted set.
-    /// 
-    /// Given a sorted set representing a geospatial index, populated using the GEOADD command, 
+    ///
+    /// Given a sorted set representing a geospatial index, populated using the GEOADD command,
     /// the command returns the distance between the two specified members in the specified unit.
-    /// 
+    ///
     /// If one or both the members are missing, the command returns NULL.
     /// ```
     /// GEODIST key member1 member2 [M | KM | FT | MI]
@@ -129,10 +129,49 @@ impl Server {
             } else {
                 let first = coors.remove(0);
                 let second = coors.remove(0);
-                let distance = haversine(first, second);
+                let distance = haversine(&first, &second);
                 Ok(distance.to_string().into())
             }
         } else {
+            Ok(Frame::None(TypedNone::String))
+        }
+    }
+    
+    /// Return the members of a sorted set populated with geospatial information using GEOADD, 
+    /// which are within the borders of the area specified by a given shape. 
+    /// This command extends the GEORADIUS command, so in addition to searching 
+    /// within circular areas, it supports searching within rectangular areas.
+    /// ```
+    /// GEOSEARCH key <FROMMEMBER member | FROMLONLAT longitude latitude>
+    ///   <BYRADIUS radius <M | KM | FT | MI> | BYBOX width height <M | KM |
+    ///   FT | MI>> [ASC | DESC] [COUNT count [ANY]] [WITHCOORD] [WITHDIST]
+    ///   [WITHHASH]
+    /// ```
+    pub async fn geosearch(&mut self, mut args: Args) -> Result {
+        let err = || wrong_num_arguments("geosearch");
+
+        let store = self.store.lock().await;
+        let key = args.pop_front().ok_or(err())?;
+        let _fromlatlont = args.pop_front();
+        let longitude: f64 = args.pop_front().ok_or(syntax_error())?.parse().map_err(|_| syntax_error())?;
+        let latitude: f64 = args.pop_front().ok_or(syntax_error())?.parse().map_err(|_| syntax_error())?;
+        let center = Coordinates {longitude, latitude};
+        let _byradius = args.pop_front();
+        let radius: f64 = args.pop_front().ok_or(syntax_error())?.parse().map_err(|_| syntax_error())?;
+        
+        if let Some(v) = store.kv.get(&key) {
+            let z = v.zset().ok_or(wrong_type())?;
+            let res = z.scores.iter().filter_map(|(k, v)| {
+                let coord = decode(v.0 as u64);
+                let distance = haversine(&center, &coord);
+                if distance <= radius {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            }).collect::<Vec<_>>();
+            Ok(res.into())
+        }  else {
             Ok(Frame::None(TypedNone::String))
         }
     }
@@ -207,7 +246,7 @@ fn decode(geo_code: u64) -> Coordinates {
     convert_grid_numbers_to_coordinates(grid_latitude_number, grid_longitude_number)
 }
 
-fn haversine(origin: Coordinates, destination: Coordinates) -> f64 {
+fn haversine(origin: &Coordinates, destination: &Coordinates) -> f64 {
     const R: f64 = 6372797.560856;
 
     let lat1 = origin.latitude.to_radians();

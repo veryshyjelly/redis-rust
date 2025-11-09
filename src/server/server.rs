@@ -194,7 +194,7 @@ impl Server {
             // zset
             zadd, zcard, zcount, zrank, zrange, zrem, zscore,
             // geospatial
-            geoadd, geopos, geodist;
+            geoadd, geopos, geodist, geosearch;
             "type" => self.redis_type(args).await,
             "exec" => Err(make_io_error("ERR EXEC without MULTI").into()),
             "discard" => Err(make_io_error("ERR DISCARD without MULTI").into()),
